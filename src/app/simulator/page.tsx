@@ -39,16 +39,16 @@ const WAREHOUSE_LOCATIONS: Record<string, Point> = {
 
 const PHASE_CONFIG: Record<Phase, { duration: number; robotTarget: string }> = {
   idle: { duration: 1500, robotTarget: "home" },
-  job_posted: { duration: 1200, robotTarget: "home" },
-  matching: { duration: 1500, robotTarget: "home" },
-  escrow_locked: { duration: 1000, robotTarget: "home" },
-  navigating_pickup: { duration: 2500, robotTarget: "rackB3" },
-  picking_up: { duration: 1200, robotTarget: "rackB3" },
-  navigating_delivery: { duration: 2500, robotTarget: "dispatchBay2" },
-  delivering: { duration: 1200, robotTarget: "dispatchBay2" },
-  proof_submitted: { duration: 1000, robotTarget: "dispatchBay2" },
-  verifying: { duration: 1500, robotTarget: "dispatchBay2" },
-  settled: { duration: 3000, robotTarget: "dispatchBay2" },
+  job_posted: { duration: 1800, robotTarget: "home" },
+  matching: { duration: 2000, robotTarget: "home" },
+  escrow_locked: { duration: 1500, robotTarget: "home" },
+  navigating_pickup: { duration: 3000, robotTarget: "rackB3" },
+  picking_up: { duration: 1500, robotTarget: "rackB3" },
+  navigating_delivery: { duration: 3000, robotTarget: "dispatchBay2" },
+  delivering: { duration: 1500, robotTarget: "dispatchBay2" },
+  proof_submitted: { duration: 1500, robotTarget: "dispatchBay2" },
+  verifying: { duration: 2000, robotTarget: "dispatchBay2" },
+  settled: { duration: 4000, robotTarget: "dispatchBay2" },
 };
 
 const PHASE_ORDER: Phase[] = [
@@ -74,7 +74,7 @@ function getLog(phase: Phase, time: string): LogEntry | null {
       timestamp: time,
     },
     matching: {
-      prefix: "ROVA",
+      prefix: "REGISTRY",
       color: "text-text-tertiary",
       message: "3 robots available · matching by reputation + ETA...",
       timestamp: time,
@@ -124,7 +124,7 @@ function getLog(phase: Phase, time: string): LogEntry | null {
     settled: {
       prefix: "SETTLED",
       color: "text-accent",
-      message: "1.75 USDC → G1-ALPHA · 0.25 USDC → MERCHANT-7 · Job complete",
+      message: "1.7448 USDC → G1-ALPHA · 0.0052 USDC fee · Job complete",
       timestamp: time,
     },
   };
@@ -133,11 +133,50 @@ function getLog(phase: Phase, time: string): LogEntry | null {
 
 function formatTime(): string {
   const d = new Date();
-  return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+// ─── Narrative overlay text per phase ────────────────────────────────
+function getNarrative(phase: Phase): string {
+  const narratives: Partial<Record<Phase, string>> = {
+    idle: "An agent is about to post a physical task through ACP...",
+    job_posted:
+      "The agent posts a CARRY task to the ROVA marketplace. Bounty: 2.00 USDC. The task needs a robot to move cargo from Rack B3 to Dispatch Bay 2.",
+    matching:
+      "The ROVA registry matches the task to the best-fit robot based on capability, reputation, location, and bid price.",
+    escrow_locked:
+      "G1-ALPHA wins the bid at 1.75 USDC. The bounty is now locked in the ROVAMarket escrow contract. Neither party can withdraw until verification.",
+    navigating_pickup:
+      "G1-ALPHA accepts the job and begins navigating to the pickup location at Rack B3.",
+    picking_up:
+      "The robot arrives at Rack B3 and picks up the payload. Sensor confirmation logged.",
+    navigating_delivery:
+      "Payload secured. G1-ALPHA navigates to the delivery point at Dispatch Bay 2.",
+    delivering:
+      "Arrived at destination. The robot delivers the payload and prepares to submit proof of completion.",
+    proof_submitted:
+      "G1-ALPHA submits proof to ROVAVerifier.sol — GPS coordinates, timestamp, and sensor hash.",
+    verifying:
+      "The verifier contract validates: GPS at destination, timestamp within SLA, sensor hash matches. All checks pass.",
+    settled:
+      "Escrow releases automatically. 1.7448 USDC sent to G1-ALPHA's wallet. 0.0052 USDC protocol fee. Settlement recorded onchain.",
+  };
+  return narratives[phase] ?? "";
 }
 
 // ─── Warehouse Canvas ────────────────────────────────────────────────
-function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point }) {
+function WarehouseCanvas({
+  phase,
+  robotPos,
+}: {
+  phase: Phase;
+  robotPos: Point;
+}) {
   const hasPayload =
     PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.indexOf("picking_up") &&
     PHASE_ORDER.indexOf(phase) <= PHASE_ORDER.indexOf("delivering");
@@ -145,10 +184,23 @@ function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point })
   return (
     <div className="relative h-full w-full overflow-hidden rounded-2xl border border-border bg-surface-0">
       {/* Grid overlay */}
-      <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
+      <svg
+        className="absolute inset-0 h-full w-full"
+        xmlns="http://www.w3.org/2000/svg"
+      >
         <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+          <pattern
+            id="grid"
+            width="40"
+            height="40"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M 40 0 L 0 0 0 40"
+              fill="none"
+              stroke="rgba(255,255,255,0.03)"
+              strokeWidth="1"
+            />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#grid)" />
@@ -178,7 +230,6 @@ function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point })
 
       {/* Path lines */}
       <svg className="absolute inset-0 h-full w-full pointer-events-none">
-        {/* Home to Rack B3 */}
         <line
           x1={WAREHOUSE_LOCATIONS.home.x}
           y1={WAREHOUSE_LOCATIONS.home.y}
@@ -188,7 +239,6 @@ function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point })
           strokeWidth="1"
           strokeDasharray="4 4"
         />
-        {/* Rack B3 to Dispatch Bay 2 */}
         <line
           x1={WAREHOUSE_LOCATIONS.rackB3.x}
           y1={WAREHOUSE_LOCATIONS.rackB3.y}
@@ -207,17 +257,14 @@ function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point })
         transition={{ duration: 2.2, ease: [0.25, 0.46, 0.45, 0.94] }}
       >
         <div className="relative flex h-10 w-10 items-center justify-center">
-          {/* Pulse ring */}
           <motion.div
             className="absolute inset-0 rounded-full border border-accent/30"
             animate={{ scale: [1, 1.8, 1], opacity: [0.5, 0, 0.5] }}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          {/* Robot body */}
           <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 border border-accent/50">
             <div className="h-3 w-3 rounded-full bg-accent" />
           </div>
-          {/* Payload indicator */}
           {hasPayload && (
             <motion.div
               initial={{ scale: 0 }}
@@ -231,10 +278,12 @@ function WarehouseCanvas({ phase, robotPos }: { phase: Phase; robotPos: Point })
         </div>
       </motion.div>
 
-      {/* Warehouse label rows */}
+      {/* Warehouse label */}
       <div className="absolute top-4 left-4 flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-        <span className="font-mono text-[10px] text-text-tertiary">WAREHOUSE-01 · LIVE</span>
+        <span className="font-mono text-[10px] text-text-tertiary">
+          WAREHOUSE-01 · LIVE
+        </span>
       </div>
 
       {/* Legend */}
@@ -290,8 +339,12 @@ function LocationMarker({
             transition={{ duration: 1.5, repeat: Infinity }}
           />
         )}
-        <span className="font-mono text-[9px] font-bold text-text-primary">{label}</span>
-        <span className="font-mono text-[8px] text-text-tertiary mt-0.5">{sublabel}</span>
+        <span className="font-mono text-[9px] font-bold text-text-primary">
+          {label}
+        </span>
+        <span className="font-mono text-[8px] text-text-tertiary mt-0.5">
+          {sublabel}
+        </span>
       </div>
     </div>
   );
@@ -317,17 +370,23 @@ function LifecyclePanel({ phase }: { phase: Phase }) {
   return (
     <div className="rounded-2xl border border-border bg-surface-1 p-5">
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">
+        <span className="font-mono text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
           ACP Job Lifecycle
         </span>
-        <span className={`font-mono text-[10px] px-2 py-0.5 rounded-full ${
-          phase === "settled"
-            ? "bg-accent/10 text-accent"
-            : phase === "idle"
-            ? "bg-surface-2 text-text-tertiary"
-            : "bg-yellow-400/10 text-yellow-400"
-        }`}>
-          {phase === "idle" ? "STANDBY" : phase === "settled" ? "COMPLETE" : "IN PROGRESS"}
+        <span
+          className={`font-mono text-[10px] px-2 py-0.5 rounded-full ${
+            phase === "settled"
+              ? "bg-accent/10 text-accent"
+              : phase === "idle"
+              ? "bg-surface-2 text-text-tertiary"
+              : "bg-yellow-400/10 text-yellow-400"
+          }`}
+        >
+          {phase === "idle"
+            ? "STANDBY"
+            : phase === "settled"
+            ? "COMPLETE"
+            : "IN PROGRESS"}
         </span>
       </div>
       <div className="space-y-1">
@@ -335,7 +394,6 @@ function LifecyclePanel({ phase }: { phase: Phase }) {
           const stageIndex = PHASE_ORDER.indexOf(s.id as Phase);
           const isPast = currentIndex > stageIndex;
           const isCurrent = currentIndex === stageIndex;
-          const isFuture = currentIndex < stageIndex;
 
           return (
             <div
@@ -360,15 +418,23 @@ function LifecyclePanel({ phase }: { phase: Phase }) {
                 {isPast ? "\u2713" : i + 1}
               </div>
               <div className="flex-1">
-                <span className={`text-[12px] ${
-                  isCurrent ? "text-accent font-semibold" : isPast ? "text-text-secondary" : "text-text-tertiary"
-                }`}>
+                <span
+                  className={`text-[12px] ${
+                    isCurrent
+                      ? "text-accent font-semibold"
+                      : isPast
+                      ? "text-text-secondary"
+                      : "text-text-tertiary"
+                  }`}
+                >
                   {s.label}
                 </span>
               </div>
-              <span className={`font-mono text-[8px] ${
-                isCurrent ? "text-accent" : "text-text-tertiary"
-              }`}>
+              <span
+                className={`font-mono text-[8px] ${
+                  isCurrent ? "text-accent" : "text-text-tertiary"
+                }`}
+              >
                 {s.icon}
               </span>
             </div>
@@ -379,108 +445,74 @@ function LifecyclePanel({ phase }: { phase: Phase }) {
   );
 }
 
-// ─── Job Details Card ────────────────────────────────────────────────
-function JobDetails({ phase }: { phase: Phase }) {
-  const active = phase !== "idle";
+// ─── Settlement Card (appears when settled) ──────────────────────────
+function SettlementCard({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+
   return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">
-          Active Job
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", damping: 15 }}
+      className="rounded-2xl border border-accent/30 bg-accent/[0.04] p-5"
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-accent pulse-glow" />
+        <span className="font-mono text-[11px] font-semibold text-accent uppercase tracking-wider">
+          Settlement Complete
         </span>
-        {active && (
-          <span className="font-mono text-[10px] text-accent">JOB-0x7F3A</span>
-        )}
       </div>
-      {active ? (
-        <div className="space-y-3">
-          <DetailRow label="Type" value="CARRY" />
-          <DetailRow label="Client" value="MERCHANT-7" valueColor="text-accent" />
-          <DetailRow label="Provider" value="G1-ALPHA" valueColor="text-blue-400" />
-          <DetailRow label="From" value="Rack B3 (52.412, -1.509)" />
-          <DetailRow label="To" value="Dispatch Bay 2 (52.413, -1.508)" />
-          <DetailRow label="Bounty" value="2.00 USDC" />
-          <DetailRow label="Bid" value="1.75 USDC" />
-          <DetailRow label="SLA" value="5 minutes" />
-          <DetailRow label="Schema" value="ROVA-CARRY-v1" />
-          <div className="mt-3 border-t border-border pt-3">
-            <DetailRow
-              label="Escrow"
-              value={
-                PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.indexOf("escrow_locked")
-                  ? phase === "settled"
-                    ? "RELEASED"
-                    : "1.75 USDC LOCKED"
-                  : "PENDING"
-              }
-              valueColor={
-                phase === "settled" ? "text-accent" : "text-yellow-400"
-              }
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="flex h-32 items-center justify-center">
-          <span className="font-mono text-xs text-text-tertiary">Waiting for job...</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  valueColor = "text-text-secondary",
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-[12px] text-text-tertiary">{label}</span>
-      <span className={`font-mono text-[11px] ${valueColor}`}>{value}</span>
-    </div>
-  );
-}
-
-// ─── Robot Status Card ───────────────────────────────────────────────
-function RobotStatus({ phase }: { phase: Phase }) {
-  const phaseIdx = PHASE_ORDER.indexOf(phase);
-  const isMoving = phase === "navigating_pickup" || phase === "navigating_delivery";
-  const hasPayload =
-    phaseIdx >= PHASE_ORDER.indexOf("picking_up") &&
-    phaseIdx <= PHASE_ORDER.indexOf("delivering");
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">
-          Robot Status
-        </span>
-        <div className="flex items-center gap-1.5">
-          <span className={`h-1.5 w-1.5 rounded-full ${isMoving ? "bg-blue-400 animate-pulse" : "bg-accent"}`} />
-          <span className="font-mono text-[10px] text-text-tertiary">
-            {isMoving ? "MOVING" : phase === "idle" ? "IDLE" : "ACTIVE"}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Robot Payment
+          </span>
+          <span className="font-mono text-[12px] font-semibold text-accent">
+            1.7448 USDC
           </span>
         </div>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Protocol Fee
+          </span>
+          <span className="font-mono text-[12px] text-text-secondary">
+            0.0052 USDC
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Robot
+          </span>
+          <span className="font-mono text-[12px] text-blue-400">G1-ALPHA</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Settlement TX
+          </span>
+          <span className="font-mono text-[12px] text-text-secondary">
+            0x4d1f...e8c3
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Chain
+          </span>
+          <span className="font-mono text-[12px] text-text-secondary">
+            Base Sepolia
+          </span>
+        </div>
+        <div className="mt-2 pt-2 border-t border-accent/10">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] text-text-tertiary">
+              SLA
+            </span>
+            <span className="font-mono text-[12px] text-green-400">
+              MET (2m 14s / 5m max)
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="space-y-3">
-        <DetailRow label="Unit" value="G1-ALPHA" valueColor="text-blue-400" />
-        <DetailRow label="Type" value="Unitree G1" />
-        <DetailRow label="Reputation" value="4.9 / 5.0" valueColor="text-accent" />
-        <DetailRow label="Jobs Today" value="14" />
-        <DetailRow label="Earnings" value="22.50 USDC" />
-        <DetailRow label="Payload" value={hasPayload ? "CARRYING" : "EMPTY"} valueColor={hasPayload ? "text-yellow-400" : "text-text-tertiary"} />
-        <DetailRow label="Battery" value="87%" />
-        <DetailRow
-          label="Stake"
-          value="500 ROVA"
-          valueColor="text-accent"
-        />
-      </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -495,10 +527,12 @@ function LogFeed({ logs }: { logs: LogEntry[] }) {
   return (
     <div className="rounded-2xl border border-border bg-surface-1 p-5">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">
+        <span className="font-mono text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
           Transaction Log
         </span>
-        <span className="font-mono text-[10px] text-text-tertiary">{logs.length} events</span>
+        <span className="font-mono text-[10px] text-text-tertiary">
+          {logs.length} events
+        </span>
       </div>
       <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
         <AnimatePresence>
@@ -511,7 +545,9 @@ function LogFeed({ logs }: { logs: LogEntry[] }) {
               className="font-mono text-[11px] leading-relaxed"
             >
               <span className="text-text-tertiary mr-2">{log.timestamp}</span>
-              <span className={`${log.color} font-semibold`}>[{log.prefix}]</span>{" "}
+              <span className={`${log.color} font-semibold`}>
+                [{log.prefix}]
+              </span>{" "}
               <span className="text-text-secondary">{log.message}</span>
             </motion.div>
           ))}
@@ -520,9 +556,39 @@ function LogFeed({ logs }: { logs: LogEntry[] }) {
       </div>
       {logs.length === 0 && (
         <div className="flex h-20 items-center justify-center">
-          <span className="font-mono text-[11px] text-text-tertiary">Waiting for activity...</span>
+          <span className="font-mono text-[11px] text-text-tertiary">
+            Waiting for activity...
+          </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Narrative Bar ───────────────────────────────────────────────────
+function NarrativeBar({ phase }: { phase: Phase }) {
+  const text = getNarrative(phase);
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface-1 p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-tertiary">
+          What&apos;s happening
+        </span>
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={phase}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.3 }}
+          className="font-mono text-[13px] leading-[1.6] text-text-secondary"
+        >
+          {text}
+        </motion.p>
+      </AnimatePresence>
     </div>
   );
 }
@@ -544,15 +610,7 @@ export default function SimulatorPage() {
     let i = 0;
     const advance = () => {
       if (i >= PHASE_ORDER.length) {
-        // Loop: restart after settled
-        setTimeout(() => {
-          setPhase("idle");
-          setLogs([]);
-          setRobotPos(WAREHOUSE_LOCATIONS.home);
-          i = 0;
-          timeoutRef.current = setTimeout(advance, 1500);
-        }, 3000);
-        return;
+        return; // Stop at settled — don't loop
       }
 
       const p = PHASE_ORDER[i];
@@ -591,57 +649,305 @@ export default function SimulatorPage() {
       <div className="border-b border-border bg-surface-0">
         <div className="mx-auto flex h-12 max-w-[1400px] items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <Link
+              href="/"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/10 border border-accent/20">
                 <div className="h-1.5 w-1.5 rounded-full bg-accent" />
               </div>
-              <span className="text-[14px] font-semibold text-text-primary">ROVA</span>
+              <span className="font-mono text-[14px] font-semibold text-text-primary">
+                ROVA
+              </span>
             </Link>
             <span className="text-text-tertiary">/</span>
-            <span className="text-[13px] text-text-secondary">Simulator</span>
+            <span className="font-mono text-[13px] text-text-secondary">
+              Simulator
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
             {!running ? (
               <button
                 onClick={runSimulation}
-                className="flex items-center gap-2 rounded-lg bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-accent px-5 py-1.5 font-mono text-[13px] font-semibold text-background hover:brightness-110 transition-all"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                Run Demo
+                Post Job
               </button>
             ) : (
               <button
                 onClick={stopSimulation}
-                className="flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-1.5 text-[13px] font-medium text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-surface-2 px-4 py-1.5 font-mono text-[13px] font-medium text-text-secondary border border-border hover:bg-surface-3 transition-colors"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                Stop
+                Reset
               </button>
             )}
           </div>
         </div>
       </div>
 
+      {/* Intro section (shown when idle and not running) */}
+      {!running && phase === "idle" && (
+        <div className="mx-auto max-w-[1400px] px-4 pt-8 pb-4">
+          <div className="rounded-2xl border border-border bg-surface-1 p-8 lg:p-10">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2.5 mb-6">
+                <span className="h-[7px] w-[7px] rounded-full bg-accent" />
+                <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-text-tertiary">
+                  ACP Simulator
+                </span>
+              </div>
+              <h1 className="font-mono text-[clamp(1.5rem,3.5vw,2.25rem)] font-semibold leading-[1.15] tracking-tight text-text-primary mb-4">
+                The ROVA ACP Simulator
+              </h1>
+              <p className="font-mono text-[14px] leading-[1.7] text-text-tertiary mb-6">
+                An agent posts a task through ACP, a robot accepts the job,
+                executes the task in the physical environment, and then submits
+                GPS and timestamp proof to the verifier contract.
+              </p>
+              <p className="font-mono text-[14px] leading-[1.7] text-text-tertiary mb-8">
+                Once the proof is validated, escrow releases automatically and
+                the robot receives payment onchain. Click{" "}
+                <span className="text-accent font-semibold">Post Job</span> to
+                see the full agent-to-robot lifecycle.
+              </p>
+              <button
+                onClick={runSimulation}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 font-mono text-[14px] font-semibold text-background hover:brightness-110 transition-all"
+              >
+                Post Job &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main layout */}
       <div className="mx-auto max-w-[1400px] p-4">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-          {/* Left: Canvas + Log */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
+          {/* Left: Canvas + Narrative + Log */}
           <div className="flex flex-col gap-4">
             <div className="h-[480px]">
               <WarehouseCanvas phase={phase} robotPos={robotPos} />
             </div>
+            <NarrativeBar phase={phase} />
             <LogFeed logs={logs} />
           </div>
 
           {/* Right: Panels */}
           <div className="flex flex-col gap-4">
             <LifecyclePanel phase={phase} />
-            <JobDetails phase={phase} />
-            <RobotStatus phase={phase} />
+            <SettlementCard visible={phase === "settled"} />
+
+            {/* Job details */}
+            <div className="rounded-2xl border border-border bg-surface-1 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="font-mono text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+                  Active Job
+                </span>
+                {phase !== "idle" && (
+                  <span className="font-mono text-[10px] text-accent">
+                    JOB-0x7F3A
+                  </span>
+                )}
+              </div>
+              {phase !== "idle" ? (
+                <div className="space-y-2.5">
+                  <DetailRow label="Type" value="CARRY" />
+                  <DetailRow
+                    label="Client"
+                    value="MERCHANT-7"
+                    valueColor="text-accent"
+                  />
+                  <DetailRow
+                    label="Provider"
+                    value="G1-ALPHA"
+                    valueColor="text-blue-400"
+                  />
+                  <DetailRow label="From" value="Rack B3" />
+                  <DetailRow label="To" value="Dispatch Bay 2" />
+                  <DetailRow label="Bounty" value="2.00 USDC" />
+                  <DetailRow label="Winning Bid" value="1.75 USDC" />
+                  <DetailRow label="SLA" value="5 minutes" />
+                  <div className="mt-2 pt-2 border-t border-border">
+                    <DetailRow
+                      label="Escrow"
+                      value={
+                        PHASE_ORDER.indexOf(phase) >=
+                        PHASE_ORDER.indexOf("escrow_locked")
+                          ? phase === "settled"
+                            ? "RELEASED"
+                            : "1.75 USDC LOCKED"
+                          : "PENDING"
+                      }
+                      valueColor={
+                        phase === "settled" ? "text-accent" : "text-yellow-400"
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-24 items-center justify-center">
+                  <span className="font-mono text-[11px] text-text-tertiary">
+                    Click Post Job to begin...
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Robot status */}
+            <div className="rounded-2xl border border-border bg-surface-1 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="font-mono text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+                  Robot Status
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      phase === "navigating_pickup" ||
+                      phase === "navigating_delivery"
+                        ? "bg-blue-400 animate-pulse"
+                        : "bg-accent"
+                    }`}
+                  />
+                  <span className="font-mono text-[10px] text-text-tertiary">
+                    {phase === "navigating_pickup" ||
+                    phase === "navigating_delivery"
+                      ? "MOVING"
+                      : phase === "idle"
+                      ? "IDLE"
+                      : "ACTIVE"}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2.5">
+                <DetailRow
+                  label="Unit"
+                  value="G1-ALPHA"
+                  valueColor="text-blue-400"
+                />
+                <DetailRow label="Type" value="Unitree G1" />
+                <DetailRow
+                  label="Reputation"
+                  value="4.9 / 5.0"
+                  valueColor="text-accent"
+                />
+                <DetailRow label="Jobs Today" value="14" />
+                <DetailRow label="Earnings" value="22.50 USDC" />
+                <DetailRow
+                  label="Payload"
+                  value={
+                    PHASE_ORDER.indexOf(phase) >=
+                      PHASE_ORDER.indexOf("picking_up") &&
+                    PHASE_ORDER.indexOf(phase) <=
+                      PHASE_ORDER.indexOf("delivering")
+                      ? "CARRYING"
+                      : "EMPTY"
+                  }
+                  valueColor={
+                    PHASE_ORDER.indexOf(phase) >=
+                      PHASE_ORDER.indexOf("picking_up") &&
+                    PHASE_ORDER.indexOf(phase) <=
+                      PHASE_ORDER.indexOf("delivering")
+                      ? "text-yellow-400"
+                      : "text-text-tertiary"
+                  }
+                />
+                <DetailRow label="Battery" value="87%" />
+                <DetailRow
+                  label="Stake"
+                  value="500 ROVA"
+                  valueColor="text-accent"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom: Why the robotics lab matters (always visible) */}
+        <div className="mt-8 rounded-2xl border border-border bg-surface-1 p-8 lg:p-10">
+          <div className="grid gap-8 lg:grid-cols-2">
+            <div>
+              <div className="flex items-center gap-2.5 mb-5">
+                <span className="h-[7px] w-[7px] rounded-full bg-accent" />
+                <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-text-tertiary">
+                  Why the Robotics Lab
+                </span>
+              </div>
+              <h2 className="font-mono text-[clamp(1.2rem,2.5vw,1.75rem)] font-semibold leading-[1.2] tracking-tight text-text-primary mb-4">
+                This simulator shows the full protocol flow, but the missing
+                step is validating the physical execution loop with real robots.
+              </h2>
+              <p className="font-mono text-[13px] leading-[1.65] text-text-tertiary">
+                Access to the robotics lab and the Unitree G1 robots would allow
+                ROVA to complete that final step and validate agent-to-robot
+                coordination in the real world. That&apos;s what we&apos;re
+                excited to build during the program.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4">
+              <div className="rounded-xl border border-border bg-surface-0 p-5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-tertiary block mb-3">
+                  What we&apos;ve validated
+                </span>
+                <div className="space-y-2">
+                  {[
+                    "Agent-to-robot task posting via ACP v2",
+                    "Onchain escrow lock and release",
+                    "GPS + timestamp proof verification",
+                    "Automatic settlement on Base",
+                    "Fleet operator policy controls",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-2.5">
+                      <span className="h-1 w-1 rounded-full bg-accent" />
+                      <span className="font-mono text-[12px] text-text-secondary">
+                        {item}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface-0 p-5">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-text-tertiary block mb-3">
+                  What the lab unlocks
+                </span>
+                <div className="space-y-2">
+                  {[
+                    "Real Unitree G1 physical task execution",
+                    "Sensor-to-chain proof pipeline",
+                    "Multi-robot fleet coordination",
+                    "Real-world SLA validation",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-2.5">
+                      <span className="h-1 w-1 rounded-full bg-accent/40" />
+                      <span className="font-mono text-[12px] text-text-tertiary">
+                        {item}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  valueColor = "text-text-secondary",
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="font-mono text-[11px] text-text-tertiary">{label}</span>
+      <span className={`font-mono text-[11px] ${valueColor}`}>{value}</span>
     </div>
   );
 }
