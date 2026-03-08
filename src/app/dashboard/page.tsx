@@ -1,589 +1,1764 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
+import AppShell from "@/components/shell/AppShell";
+import { useCardGlow } from "@/hooks/useCardGlow";
+import type {
+  TaskType,
+  Robot,
+  Job,
+  Settlement,
+  FleetPolicy,
+  EarningsDataPoint,
+} from "@/lib/types";
+import {
+  ROBOTS,
+  JOBS,
+  SETTLEMENTS,
+  FLEET_POLICY,
+  EARNINGS_24H,
+} from "@/lib/mock-data";
+import {
+  TASK_TYPES,
+  TASK_TYPE_LABELS,
+  jobStatusColor,
+  jobStatusLabel,
+  robotStatusColor,
+  robotStatusLabel,
+} from "@/lib/constants";
 
-// ─── Types ───────────────────────────────────────────────────────────
-interface Robot {
-  id: string;
-  name: string;
-  type: string;
-  status: "active" | "idle" | "charging" | "maintenance";
-  reputation: number;
-  jobsToday: number;
-  earningsToday: number;
-  earningsTotal: number;
-  battery: number;
-  stake: number;
-  capabilities: string[];
-  currentJob: string | null;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────
 
-interface Job {
-  id: string;
-  type: string;
-  client: string;
-  provider: string | null;
-  from: string;
-  to: string;
-  bounty: number;
-  bid: number | null;
-  status: "pending" | "active" | "completed" | "failed";
-  sla: number;
-  timeElapsed: number | null;
-  timestamp: string;
-}
-
-interface Settlement {
-  id: string;
-  jobId: string;
-  client: string;
-  provider: string;
-  amount: number;
-  type: string;
-  timestamp: string;
-  txHash: string;
-}
-
-// ─── Mock Data ───────────────────────────────────────────────────────
-const ROBOTS: Robot[] = [
-  {
-    id: "r1", name: "G1-ALPHA", type: "Unitree G1", status: "active",
-    reputation: 4.9, jobsToday: 14, earningsToday: 22.50, earningsTotal: 1847.25,
-    battery: 87, stake: 500, capabilities: ["CARRY", "NAVIGATE"],
-    currentJob: "JOB-0x7F3A",
-  },
-  {
-    id: "r2", name: "G1-BETA", type: "Unitree G1", status: "idle",
-    reputation: 4.7, jobsToday: 11, earningsToday: 18.20, earningsTotal: 1523.80,
-    battery: 92, stake: 500, capabilities: ["CARRY", "NAVIGATE", "SORT"],
-    currentJob: null,
-  },
-  {
-    id: "r3", name: "G1-DELTA", type: "Unitree G1", status: "active",
-    reputation: 4.8, jobsToday: 13, earningsToday: 20.85, earningsTotal: 1695.40,
-    battery: 73, stake: 500, capabilities: ["CARRY", "NAVIGATE", "INSPECT"],
-    currentJob: "JOB-0x8B2C",
-  },
-  {
-    id: "r4", name: "G1-GAMMA", type: "Unitree G1", status: "charging",
-    reputation: 4.6, jobsToday: 9, earningsToday: 14.40, earningsTotal: 1201.60,
-    battery: 23, stake: 350, capabilities: ["CARRY", "NAVIGATE"],
-    currentJob: null,
-  },
-  {
-    id: "r5", name: "G1-EPSILON", type: "Unitree G1", status: "active",
-    reputation: 4.9, jobsToday: 16, earningsToday: 25.60, earningsTotal: 2104.15,
-    battery: 65, stake: 750, capabilities: ["CARRY", "NAVIGATE", "INSPECT", "SORT"],
-    currentJob: "JOB-0x9D4E",
-  },
-  {
-    id: "r6", name: "G1-ZETA", type: "Unitree G1", status: "maintenance",
-    reputation: 4.5, jobsToday: 0, earningsToday: 0, earningsTotal: 890.30,
-    battery: 100, stake: 500, capabilities: ["CARRY"],
-    currentJob: null,
-  },
-];
-
-const JOBS: Job[] = [
-  { id: "JOB-0x7F3A", type: "CARRY", client: "MERCHANT-7", provider: "G1-ALPHA", from: "Rack B3", to: "Dispatch Bay 2", bounty: 2.00, bid: 1.75, status: "active", sla: 5, timeElapsed: 2, timestamp: "14:32:18" },
-  { id: "JOB-0x8B2C", type: "CARRY", client: "VENDOR-12", provider: "G1-DELTA", from: "Rack A1", to: "Dispatch Bay 1", bounty: 1.80, bid: 1.60, status: "active", sla: 4, timeElapsed: 1, timestamp: "14:31:05" },
-  { id: "JOB-0x9D4E", type: "INSPECT", client: "AUDITOR-3", provider: "G1-EPSILON", from: "Zone C", to: "Zone C", bounty: 3.50, bid: 3.20, status: "active", sla: 10, timeElapsed: 4, timestamp: "14:28:44" },
-  { id: "JOB-0xA1F7", type: "CARRY", client: "MERCHANT-7", provider: null, from: "Rack D2", to: "Dispatch Bay 3", bounty: 2.20, bid: null, status: "pending", sla: 5, timeElapsed: null, timestamp: "14:33:01" },
-  { id: "JOB-0xB3E9", type: "SORT", client: "LOGISTICS-5", provider: null, from: "Intake Zone", to: "Racks A-D", bounty: 4.00, bid: null, status: "pending", sla: 15, timeElapsed: null, timestamp: "14:33:22" },
-  { id: "JOB-0x6C1D", type: "CARRY", client: "VENDOR-12", provider: "G1-BETA", from: "Rack B1", to: "Dispatch Bay 2", bounty: 1.90, bid: 1.70, status: "completed", sla: 4, timeElapsed: 3, timestamp: "14:25:10" },
-  { id: "JOB-0x5A0B", type: "NAVIGATE", client: "SCOUT-1", provider: "G1-ALPHA", from: "Dock A", to: "Zone D", bounty: 1.20, bid: 1.00, status: "completed", sla: 3, timeElapsed: 2, timestamp: "14:20:33" },
-  { id: "JOB-0x4E8F", type: "INSPECT", client: "AUDITOR-3", provider: "G1-EPSILON", from: "Zone B", to: "Zone B", bounty: 3.00, bid: 2.80, status: "completed", sla: 8, timeElapsed: 6, timestamp: "14:15:47" },
-  { id: "JOB-0x3D7A", type: "CARRY", client: "MERCHANT-7", provider: "G1-DELTA", from: "Rack C4", to: "Dispatch Bay 1", bounty: 2.10, bid: 1.85, status: "completed", sla: 5, timeElapsed: 4, timestamp: "14:10:22" },
-  { id: "JOB-0x2C6E", type: "SORT", client: "LOGISTICS-5", provider: "G1-BETA", from: "Intake Zone", to: "Racks A-D", bounty: 3.80, bid: 3.50, status: "completed", sla: 12, timeElapsed: 10, timestamp: "14:02:55" },
-];
-
-const SETTLEMENTS: Settlement[] = [
-  { id: "s1", jobId: "JOB-0x6C1D", client: "VENDOR-12", provider: "G1-BETA", amount: 1.70, type: "CARRY", timestamp: "14:28:42", txHash: "0x4a2f...e8c1" },
-  { id: "s2", jobId: "JOB-0x5A0B", client: "SCOUT-1", provider: "G1-ALPHA", amount: 1.00, type: "NAVIGATE", timestamp: "14:22:55", txHash: "0x7b3d...f2a9" },
-  { id: "s3", jobId: "JOB-0x4E8F", client: "AUDITOR-3", provider: "G1-EPSILON", amount: 2.80, type: "INSPECT", timestamp: "14:21:18", txHash: "0x9c1e...d4b7" },
-  { id: "s4", jobId: "JOB-0x3D7A", client: "MERCHANT-7", provider: "G1-DELTA", amount: 1.85, type: "CARRY", timestamp: "14:14:33", txHash: "0x2d5f...a3c8" },
-  { id: "s5", jobId: "JOB-0x2C6E", client: "LOGISTICS-5", provider: "G1-BETA", amount: 3.50, type: "SORT", timestamp: "14:12:59", txHash: "0x8e4a...b1d6" },
-  { id: "s6", jobId: "JOB-0x1B5D", client: "MERCHANT-7", provider: "G1-ALPHA", amount: 1.90, type: "CARRY", timestamp: "13:58:11", txHash: "0x3f7c...e5a2" },
-  { id: "s7", jobId: "JOB-0x0A4C", client: "VENDOR-12", provider: "G1-GAMMA", amount: 1.60, type: "CARRY", timestamp: "13:45:07", txHash: "0x6d2b...c9f4" },
-];
-
-// ─── Earnings sparkline data (last 24h hourly) ──────────────────────
-const HOURLY_EARNINGS = [
-  2.4, 1.8, 0.9, 0.4, 0.2, 0.1, 0.3, 1.2, 3.5, 5.8, 7.2, 8.1,
-  9.4, 10.2, 8.7, 7.5, 6.8, 5.3, 4.1, 3.2, 2.8, 2.1, 1.5, 1.0,
-];
-
-// ─── Stats Bar ───────────────────────────────────────────────────────
-function StatsBar() {
-  const totalEarningsToday = ROBOTS.reduce((s, r) => s + r.earningsToday, 0);
-  const activeJobs = JOBS.filter((j) => j.status === "active").length;
-  const pendingJobs = JOBS.filter((j) => j.status === "pending").length;
-  const completedJobs = JOBS.filter((j) => j.status === "completed").length;
-  const activeRobots = ROBOTS.filter((r) => r.status === "active" || r.status === "idle").length;
-  const successRate = (completedJobs / (completedJobs + JOBS.filter((j) => j.status === "failed").length)) * 100;
-
-  const stats = [
-    { label: "Fleet Earnings (Today)", value: `${totalEarningsToday.toFixed(2)} USDC`, color: "text-accent", trend: "+12.4%" },
-    { label: "Active Jobs", value: `${activeJobs}`, color: "text-blue-400", sub: `${pendingJobs} pending` },
-    { label: "Completed Today", value: `${completedJobs}`, color: "text-text-primary", sub: `${(completedJobs * 1.75).toFixed(2)} USDC settled` },
-    { label: "Fleet Online", value: `${activeRobots}/${ROBOTS.length}`, color: "text-text-primary", sub: `${ROBOTS.filter(r => r.status === "active").length} executing` },
-    { label: "Success Rate", value: `${successRate.toFixed(1)}%`, color: "text-accent", sub: "0 failures" },
-    { label: "Total Staked", value: `${ROBOTS.reduce((s, r) => s + r.stake, 0)} ROVA`, color: "text-accent", sub: "across fleet" },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-xl border border-border bg-surface-1 px-4 py-3">
-          <div className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">{s.label}</div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className={`font-mono text-lg font-bold ${s.color}`}>{s.value}</span>
-            {"trend" in s && s.trend && (
-              <span className="font-mono text-[10px] text-accent">{s.trend}</span>
-            )}
-          </div>
-          {"sub" in s && s.sub && (
-            <div className="text-[11px] text-text-tertiary mt-0.5">{s.sub}</div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Earnings Chart ──────────────────────────────────────────────────
-function EarningsChart() {
-  const max = Math.max(...HOURLY_EARNINGS);
-  const total = HOURLY_EARNINGS.reduce((a, b) => a + b, 0);
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">Fleet Earnings — 24h</span>
-          <div className="mt-1 font-mono text-xl font-bold text-accent">{total.toFixed(1)} USDC</div>
-        </div>
-        <div className="flex gap-2">
-          {["24H", "7D", "30D"].map((period, i) => (
-            <button
-              key={period}
-              className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-                i === 0
-                  ? "bg-accent/10 text-accent border border-accent/20"
-                  : "text-text-tertiary hover:text-text-secondary"
-              }`}
-            >
-              {period}
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Bar chart */}
-      <div className="flex items-end gap-[3px] h-24">
-        {HOURLY_EARNINGS.map((val, i) => {
-          const height = (val / max) * 100;
-          const isRecent = i >= 20;
-          return (
-            <motion.div
-              key={i}
-              initial={{ height: 0 }}
-              animate={{ height: `${height}%` }}
-              transition={{ delay: i * 0.02, duration: 0.4 }}
-              className={`flex-1 rounded-t-sm ${
-                isRecent ? "bg-accent/40" : "bg-accent/15"
-              } hover:bg-accent/50 transition-colors cursor-pointer`}
-              title={`${i}:00 — ${val.toFixed(1)} USDC`}
-            />
-          );
-        })}
-      </div>
-      <div className="flex justify-between mt-2">
-        <span className="font-mono text-[8px] text-text-tertiary">00:00</span>
-        <span className="font-mono text-[8px] text-text-tertiary">06:00</span>
-        <span className="font-mono text-[8px] text-text-tertiary">12:00</span>
-        <span className="font-mono text-[8px] text-text-tertiary">18:00</span>
-        <span className="font-mono text-[8px] text-text-tertiary">NOW</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Job Queue ───────────────────────────────────────────────────────
-function JobQueue() {
-  const [filter, setFilter] = useState<"all" | "active" | "pending" | "completed">("all");
-
-  const filtered = filter === "all" ? JOBS : JOBS.filter((j) => j.status === filter);
-
-  const statusColor = (s: Job["status"]) => {
-    switch (s) {
-      case "active": return "text-blue-400 bg-blue-400/10 border-blue-400/20";
-      case "pending": return "text-yellow-400 bg-yellow-400/10 border-yellow-400/20";
-      case "completed": return "text-accent bg-accent/10 border-accent/20";
-      case "failed": return "text-red-400 bg-red-400/10 border-red-400/20";
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">Job Queue</span>
-        <div className="flex gap-1">
-          {(["all", "active", "pending", "completed"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-                filter === f
-                  ? "bg-surface-3 text-text-primary"
-                  : "text-text-tertiary hover:text-text-secondary"
-              }`}
-            >
-              {f.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="grid grid-cols-[1fr_80px_100px_80px_70px_60px_70px] gap-2 px-3 py-2 border-b border-border">
-        {["Job", "Type", "Client", "Provider", "Bounty", "SLA", "Status"].map((h) => (
-          <span key={h} className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">{h}</span>
-        ))}
-      </div>
-
-      {/* Rows */}
-      <div className="max-h-[320px] overflow-y-auto">
-        <AnimatePresence>
-          {filtered.map((job) => (
-            <motion.div
-              key={job.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="grid grid-cols-[1fr_80px_100px_80px_70px_60px_70px] gap-2 px-3 py-2.5 border-b border-border last:border-0 hover:bg-surface-2/30 transition-colors"
-            >
-              <div>
-                <span className="font-mono text-[11px] text-text-primary">{job.id}</span>
-                <div className="font-mono text-[9px] text-text-tertiary">{job.timestamp}</div>
-              </div>
-              <span className="font-mono text-[11px] text-text-secondary">{job.type}</span>
-              <span className="font-mono text-[11px] text-accent">{job.client}</span>
-              <span className="font-mono text-[11px] text-blue-400">{job.provider ?? "—"}</span>
-              <span className="font-mono text-[11px] text-text-primary">{job.bounty.toFixed(2)}</span>
-              <span className="font-mono text-[11px] text-text-secondary">
-                {job.timeElapsed !== null ? `${job.timeElapsed}/${job.sla}m` : `${job.sla}m`}
-              </span>
-              <span className={`font-mono text-[9px] font-semibold rounded-full px-2 py-0.5 border text-center ${statusColor(job.status)}`}>
-                {job.status.toUpperCase()}
-              </span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ─── Fleet Overview ──────────────────────────────────────────────────
-function FleetOverview() {
-  const statusIcon = (s: Robot["status"]) => {
-    switch (s) {
-      case "active": return { color: "bg-blue-400", label: "ACTIVE" };
-      case "idle": return { color: "bg-accent", label: "IDLE" };
-      case "charging": return { color: "bg-yellow-400", label: "CHARGING" };
-      case "maintenance": return { color: "bg-red-400", label: "MAINT" };
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">Fleet Overview</span>
-        <span className="text-[11px] text-text-tertiary">{ROBOTS.length} units</span>
-      </div>
-      <div className="space-y-2">
-        {ROBOTS.map((robot) => {
-          const si = statusIcon(robot.status);
-          return (
-            <div
-              key={robot.id}
-              className="rounded-xl border border-border bg-surface-0 p-4 hover:border-border-hover transition-colors"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${si.color} ${robot.status === "active" ? "animate-pulse" : ""}`} />
-                  <span className="font-mono text-sm font-bold text-text-primary">{robot.name}</span>
-                  <span className="font-mono text-[9px] text-text-tertiary">{robot.type}</span>
-                </div>
-                <span className={`font-mono text-[9px] px-2 py-0.5 rounded-full border ${
-                  robot.status === "active" ? "border-blue-400/20 bg-blue-400/10 text-blue-400"
-                  : robot.status === "idle" ? "border-accent/20 bg-accent/10 text-accent"
-                  : robot.status === "charging" ? "border-yellow-400/20 bg-yellow-400/10 text-yellow-400"
-                  : "border-red-400/20 bg-red-400/10 text-red-400"
-                }`}>
-                  {si.label}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-4 gap-3">
-                <MiniStat label="Earnings" value={`${robot.earningsToday.toFixed(2)}`} unit="USDC" color="text-accent" />
-                <MiniStat label="Jobs" value={`${robot.jobsToday}`} color="text-text-primary" />
-                <MiniStat label="Rep" value={`${robot.reputation}`} color="text-accent" />
-                <MiniStat label="Battery" value={`${robot.battery}%`} color={robot.battery < 30 ? "text-yellow-400" : "text-text-primary"} />
-              </div>
-
-              <div className="mt-3 flex items-center justify-between">
-                <div className="flex gap-1.5">
-                  {robot.capabilities.map((cap) => (
-                    <span key={cap} className="rounded-md border border-border bg-surface-1 px-1.5 py-0.5 font-mono text-[8px] text-text-tertiary">
-                      {cap}
-                    </span>
-                  ))}
-                </div>
-                {robot.currentJob && (
-                  <span className="font-mono text-[9px] text-blue-400">{robot.currentJob}</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, unit, color = "text-text-primary" }: { label: string; value: string; unit?: string; color?: string }) {
-  return (
-    <div>
-      <div className="font-mono text-[8px] text-text-tertiary uppercase">{label}</div>
-      <div className={`font-mono text-xs font-semibold ${color}`}>
-        {value}
-        {unit && <span className="text-[8px] text-text-tertiary ml-0.5">{unit}</span>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Settlement Feed ─────────────────────────────────────────────────
-function SettlementFeed() {
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">Recent Settlements</span>
-        <span className="font-mono text-[10px] text-accent">
-          {SETTLEMENTS.reduce((s, t) => s + t.amount, 0).toFixed(2)} USDC settled
-        </span>
-      </div>
-      <div className="space-y-2">
-        {SETTLEMENTS.map((s) => (
-          <div key={s.id} className="flex items-center justify-between rounded-lg border border-border bg-surface-0 px-4 py-3 hover:border-border-hover transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/10">
-                <span className="font-mono text-[8px] font-bold text-accent">{s.type.slice(0, 3)}</span>
-              </div>
-              <div>
-                <div className="font-mono text-[11px] text-text-primary">
-                  <span className="text-accent">{s.client}</span>
-                  <span className="text-text-tertiary mx-1.5">{"\u2192"}</span>
-                  <span className="text-blue-400">{s.provider}</span>
-                </div>
-                <div className="font-mono text-[9px] text-text-tertiary">{s.jobId} · {s.txHash}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="font-mono text-xs font-semibold text-accent">{s.amount.toFixed(2)} USDC</div>
-              <div className="font-mono text-[9px] text-text-tertiary">{s.timestamp}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Fleet Policy ────────────────────────────────────────────────────
-function FleetPolicy() {
-  const [policies, setPolicies] = useState({
-    carryEnabled: true,
-    navigateEnabled: true,
-    inspectEnabled: true,
-    sortEnabled: true,
-    priceFloor: 1.00,
-    priceCeiling: 10.00,
-    maxDailyWithdraw: 50.00,
-    autoAccept: true,
-    geofenceEnabled: true,
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
+}
+
+function batteryColor(level: number): string {
+  if (level > 50) return "bg-green-500";
+  if (level > 20) return "bg-yellow-400";
+  return "bg-red-400";
+}
+
+function batteryTextColor(level: number): string {
+  if (level > 50) return "text-green-500";
+  if (level > 20) return "text-yellow-400";
+  return "text-red-400";
+}
+
+type OperatorTab =
+  | "overview"
+  | "fleet"
+  | "jobs"
+  | "earnings"
+  | "policies"
+  | "emergency";
+
+// ─── Stat Card ────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  sub,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+}) {
+  const glow = useCardGlow();
+  return (
+    <div
+      {...glow}
+      className={`rounded-2xl border border-border bg-surface-1 p-5 ${glow.className}`}
+    >
+      <div className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">
+        {label}
+      </div>
+      <div
+        className={`mt-1.5 font-mono text-xl font-bold ${
+          accent ? "text-accent" : "text-text-primary"
+        }`}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div className="mt-1 font-mono text-[10px] text-text-tertiary">
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Toggle Switch ────────────────────────────────────────────────────
+
+function Toggle({
+  enabled,
+  onToggle,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative h-5 w-9 rounded-full transition-colors ${
+        enabled ? "bg-accent/30" : "bg-surface-3"
+      }`}
+    >
+      <motion.div
+        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full border transition-colors ${
+          enabled
+            ? "bg-accent border-accent"
+            : "bg-surface-2 border-border"
+        }`}
+        animate={{ x: enabled ? 16 : 0 }}
+        transition={{ duration: 0.15 }}
+      />
+    </button>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TAB 1: OVERVIEW
+// ═════════════════════════════════════════════════════════════════════
+
+function OverviewTab({
+  robots,
+  jobs,
+  settlements,
+  pausedRobots,
+  onTogglePause,
+}: {
+  robots: Robot[];
+  jobs: Job[];
+  settlements: Settlement[];
+  pausedRobots: Set<string>;
+  onTogglePause: (id: string) => void;
+}) {
+  const totalEarningsToday = robots.reduce((s, r) => s + r.earningsToday, 0);
+  const activeJobs = jobs.filter(
+    (j) => j.status === "executing" || j.status === "assigned"
+  ).length;
+  const completedJobs = jobs.filter((j) => j.status === "completed").length;
 
   return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[12px] font-medium text-text-tertiary uppercase tracking-wider">Fleet Policy</span>
-        <span className="text-[11px] text-text-tertiary">Operator Controls</span>
+    <div className="space-y-5">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Total Robots"
+          value={String(robots.length)}
+          sub={`${robots.filter((r) => r.status === "active").length} active`}
+        />
+        <StatCard
+          label="Active Jobs"
+          value={String(activeJobs)}
+          sub={`${jobs.filter((j) => j.status === "open").length} open`}
+        />
+        <StatCard
+          label="Today's Earnings"
+          value={`${totalEarningsToday.toFixed(2)} USDC`}
+          accent
+        />
+        <StatCard
+          label="Total Settled"
+          value={String(completedJobs)}
+          sub={`${settlements.length} settlements`}
+        />
       </div>
 
-      {/* Task Types */}
-      <div className="mb-5">
-        <div className="text-[11px] font-medium text-text-tertiary uppercase mb-2">Accepted Task Types</div>
-        <div className="flex gap-2">
-          {(["carry", "navigate", "inspect", "sort"] as const).map((type) => {
-            const key = `${type}Enabled` as keyof typeof policies;
-            const enabled = policies[key] as boolean;
+      {/* Fleet status grid */}
+      <div>
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-3">
+          Fleet Status
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {robots.map((robot) => {
+            const isPaused = pausedRobots.has(robot.id);
+            const currentJob = robot.currentJobId
+              ? jobs.find((j) => j.id === robot.currentJobId)
+              : null;
             return (
-              <button
-                key={type}
-                onClick={() => setPolicies((p) => ({ ...p, [key]: !enabled }))}
-                className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold border transition-colors ${
-                  enabled
-                    ? "border-accent/20 bg-accent/10 text-accent"
-                    : "border-border bg-surface-0 text-text-tertiary"
-                }`}
+              <motion.div
+                key={robot.id}
+                layout
+                className="rounded-2xl border border-border bg-surface-1 p-5"
               >
-                {type.toUpperCase()}
-              </button>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        isPaused ? "bg-red-400" : robotStatusColor(robot.status)
+                      } ${
+                        robot.status === "active" && !isPaused
+                          ? "animate-pulse"
+                          : ""
+                      }`}
+                    />
+                    <span className="font-mono text-[13px] font-semibold text-text-primary">
+                      {robot.name}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[10px] text-text-tertiary">
+                    {isPaused
+                      ? "PAUSED"
+                      : robotStatusLabel(robot.status).toUpperCase()}
+                  </span>
+                </div>
+
+                {/* Model */}
+                <div className="font-mono text-[10px] text-text-tertiary mb-3">
+                  {robot.model}
+                </div>
+
+                {/* Battery */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[10px] text-text-tertiary">
+                      Battery
+                    </span>
+                    <span
+                      className={`font-mono text-[10px] font-semibold ${batteryTextColor(
+                        robot.battery
+                      )}`}
+                    >
+                      {robot.battery}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-0 overflow-hidden">
+                    <motion.div
+                      className={`h-full rounded-full ${batteryColor(
+                        robot.battery
+                      )}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${robot.battery}%` }}
+                      transition={{ duration: 0.6 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Current job */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-mono text-[10px] text-text-tertiary">
+                    Current Job
+                  </span>
+                  {currentJob ? (
+                    <span className="font-mono text-[11px] text-blue-400">
+                      {currentJob.id}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[11px] text-text-tertiary">
+                      Idle
+                    </span>
+                  )}
+                </div>
+
+                {/* Earnings today */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-mono text-[10px] text-text-tertiary">
+                    Today
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold text-accent">
+                    {robot.earningsToday.toFixed(2)} USDC
+                  </span>
+                </div>
+
+                {/* Capabilities */}
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1 flex-wrap">
+                    {robot.capabilities.map((cap) => (
+                      <span
+                        key={cap}
+                        className="rounded-md border border-border bg-surface-0 px-1.5 py-0.5 font-mono text-[8px] text-text-tertiary"
+                      >
+                        {cap}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => onTogglePause(robot.id)}
+                    className={`font-mono text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
+                      isPaused
+                        ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
+                        : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                    }`}
+                  >
+                    {isPaused ? "Resume" : "Pause"}
+                  </button>
+                </div>
+              </motion.div>
             );
           })}
         </div>
       </div>
 
-      {/* Price Controls */}
-      <div className="mb-5 space-y-3">
-        <div className="text-[11px] font-medium text-text-tertiary uppercase">Price Controls (USDC)</div>
-        <div className="flex gap-3">
-          <PolicyInput label="Floor" value={policies.priceFloor} onChange={(v) => setPolicies((p) => ({ ...p, priceFloor: v }))} />
-          <PolicyInput label="Ceiling" value={policies.priceCeiling} onChange={(v) => setPolicies((p) => ({ ...p, priceCeiling: v }))} />
-          <PolicyInput label="Max Daily Withdraw" value={policies.maxDailyWithdraw} onChange={(v) => setPolicies((p) => ({ ...p, maxDailyWithdraw: v }))} />
+      {/* Recent activity */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-3">
+          Recent Activity
+        </div>
+        <div className="space-y-1">
+          {settlements.slice(0, 5).map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center justify-between rounded-lg bg-surface-0 px-4 py-2.5"
+            >
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] text-text-tertiary">
+                  {formatTime(s.timestamp)}
+                </span>
+                <span className="font-mono text-[11px] text-blue-400">
+                  {s.provider}
+                </span>
+                <span className="font-mono text-[9px] text-text-tertiary">
+                  {s.taskType}
+                </span>
+              </div>
+              <span className="font-mono text-[11px] font-semibold text-accent">
+                +{s.robotPayment.toFixed(4)} USDC
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-
-      {/* Toggles */}
-      <div className="space-y-2">
-        <PolicyToggle
-          label="Auto-accept matching jobs"
-          enabled={policies.autoAccept}
-          onToggle={() => setPolicies((p) => ({ ...p, autoAccept: !p.autoAccept }))}
-        />
-        <PolicyToggle
-          label="Geofence enforcement"
-          enabled={policies.geofenceEnabled}
-          onToggle={() => setPolicies((p) => ({ ...p, geofenceEnabled: !p.geofenceEnabled }))}
-        />
-      </div>
-
-      {/* Emergency */}
-      <div className="mt-5 pt-4 border-t border-border">
-        <button className="w-full rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-[13px] font-medium text-red-400 hover:bg-red-500/20 transition-colors">
-          EMERGENCY PAUSE — Halt All Robots
-        </button>
-      </div>
     </div>
   );
 }
 
-function PolicyInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div className="flex-1">
-      <div className="font-mono text-[8px] text-text-tertiary mb-1">{label}</div>
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        step="0.25"
-        min="0"
-        className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-xs text-text-primary outline-none focus:border-accent/30 transition-colors"
-      />
-    </div>
-  );
-}
+// ═════════════════════════════════════════════════════════════════════
+// TAB 2: FLEET MANAGEMENT
+// ═════════════════════════════════════════════════════════════════════
 
-function PolicyToggle({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: () => void }) {
+function FleetTab({
+  robots,
+  jobs,
+  pausedRobots,
+  onTogglePause,
+}: {
+  robots: Robot[];
+  jobs: Job[];
+  pausedRobots: Set<string>;
+  onTogglePause: (id: string) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   return (
-    <button
-      onClick={onToggle}
-      className="flex w-full items-center justify-between rounded-lg border border-border bg-surface-0 px-4 py-2.5 hover:border-border-hover transition-colors"
-    >
-      <span className="text-[12px] text-text-secondary">{label}</span>
-      <div className={`h-4 w-8 rounded-full transition-colors ${enabled ? "bg-accent/30" : "bg-surface-3"}`}>
-        <motion.div
-          className={`h-4 w-4 rounded-full border ${enabled ? "bg-accent border-accent" : "bg-surface-2 border-border"}`}
-          animate={{ x: enabled ? 16 : 0 }}
-          transition={{ duration: 0.2 }}
-        />
+    <div className="space-y-3">
+      <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider">
+        Fleet Management &mdash; {robots.length} robots
       </div>
-    </button>
-  );
-}
 
-// ─── Main Dashboard Page ─────────────────────────────────────────────
-export default function DashboardPage() {
-  const [tab, setTab] = useState<"overview" | "fleet" | "policy">("overview");
-
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Top bar */}
-      <div className="border-b border-border bg-surface-0">
-        <div className="mx-auto flex h-12 max-w-[1400px] items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/10 border border-accent/20">
-                <div className="h-1.5 w-1.5 rounded-full bg-accent" />
+      {robots.map((robot) => {
+        const expanded = expandedId === robot.id;
+        const isPaused = pausedRobots.has(robot.id);
+        const robotJobs = jobs.filter(
+          (j) => j.robotName === robot.name
+        );
+        return (
+          <div
+            key={robot.id}
+            className="rounded-2xl border border-border bg-surface-1 overflow-hidden"
+          >
+            {/* Summary row */}
+            <button
+              onClick={() =>
+                setExpandedId(expanded ? null : robot.id)
+              }
+              className="w-full flex items-center justify-between p-5 hover:bg-surface-2/20 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    isPaused
+                      ? "bg-red-400"
+                      : robotStatusColor(robot.status)
+                  } ${
+                    robot.status === "active" && !isPaused
+                      ? "animate-pulse"
+                      : ""
+                  }`}
+                />
+                <div>
+                  <span className="font-mono text-[13px] font-semibold text-text-primary">
+                    {robot.name}
+                  </span>
+                  <span className="ml-2 font-mono text-[10px] text-text-tertiary">
+                    {robot.model}
+                  </span>
+                </div>
               </div>
-              <span className="text-[14px] font-semibold text-text-primary">ROVA</span>
-            </Link>
-            <span className="text-text-tertiary">/</span>
-            <span className="text-[13px] text-text-secondary">Fleet Dashboard</span>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {(["overview", "fleet", "policy"] as const).map((t) => (
+              <div className="flex items-center gap-6">
+                <div className="text-right hidden sm:block">
+                  <div className="font-mono text-[10px] text-text-tertiary">
+                    Rep
+                  </div>
+                  <div className="font-mono text-[11px] text-text-primary">
+                    {robot.reputation}
+                  </div>
+                </div>
+                <div className="text-right hidden sm:block">
+                  <div className="font-mono text-[10px] text-text-tertiary">
+                    Battery
+                  </div>
+                  <div
+                    className={`font-mono text-[11px] ${batteryTextColor(
+                      robot.battery
+                    )}`}
+                  >
+                    {robot.battery}%
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-[10px] text-text-tertiary">
+                    Today
+                  </div>
+                  <div className="font-mono text-[11px] text-accent">
+                    {robot.earningsToday.toFixed(2)}
+                  </div>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-text-tertiary transition-transform ${
+                    expanded ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </button>
+
+            {/* Expanded details */}
+            <AnimatePresence>
+              {expanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="border-t border-border px-5 pb-5 pt-4 space-y-4">
+                    {/* Detail grid */}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                      {[
+                        { label: "Wallet", value: robot.wallet },
+                        {
+                          label: "Status",
+                          value: isPaused
+                            ? "PAUSED"
+                            : robotStatusLabel(robot.status),
+                        },
+                        {
+                          label: "Reputation",
+                          value: String(robot.reputation),
+                        },
+                        {
+                          label: "Stake",
+                          value: `${robot.stake} ROVA`,
+                        },
+                        {
+                          label: "Jobs Completed",
+                          value: String(robot.jobsCompleted),
+                        },
+                        {
+                          label: "Jobs Failed",
+                          value: String(robot.jobsFailed),
+                        },
+                        {
+                          label: "Total Earnings",
+                          value: `${robot.earningsTotal.toFixed(2)} USDC`,
+                        },
+                        {
+                          label: "Today Earnings",
+                          value: `${robot.earningsToday.toFixed(2)} USDC`,
+                        },
+                        {
+                          label: "Battery",
+                          value: `${robot.battery}%`,
+                        },
+                        {
+                          label: "Location",
+                          value: robot.location,
+                        },
+                        {
+                          label: "Current Job",
+                          value: robot.currentJobId ?? "None",
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-lg bg-surface-0 px-3 py-2"
+                        >
+                          <div className="font-mono text-[9px] text-text-tertiary uppercase">
+                            {item.label}
+                          </div>
+                          <div className="font-mono text-[11px] text-text-primary mt-0.5 truncate">
+                            {item.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Capabilities */}
+                    <div>
+                      <div className="font-mono text-[9px] text-text-tertiary uppercase mb-1.5">
+                        Capabilities
+                      </div>
+                      <div className="flex gap-1.5">
+                        {robot.capabilities.map((cap) => (
+                          <span
+                            key={cap}
+                            className="rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[9px] text-accent"
+                          >
+                            {cap}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onTogglePause(robot.id)}
+                        className={`font-mono text-[11px] px-4 py-2 rounded-lg border transition-colors ${
+                          isPaused
+                            ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
+                            : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                        }`}
+                      >
+                        {isPaused ? "Resume" : "Pause"}
+                      </button>
+                      <button className="font-mono text-[11px] px-4 py-2 rounded-lg border border-border bg-surface-0 text-text-secondary hover:bg-surface-2/30 transition-colors">
+                        Edit Policy
+                      </button>
+                      <button className="font-mono text-[11px] px-4 py-2 rounded-lg border border-border bg-surface-0 text-text-secondary hover:bg-surface-2/30 transition-colors">
+                        View Jobs ({robotJobs.length})
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TAB 3: JOB QUEUE
+// ═════════════════════════════════════════════════════════════════════
+
+function JobsTab({
+  robots,
+  jobs,
+}: {
+  robots: Robot[];
+  jobs: Job[];
+}) {
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [taskFilter, setTaskFilter] = useState<TaskType | "all">("all");
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
+
+  const statusOptions = [
+    "all",
+    "open",
+    "executing",
+    "completed",
+    "failed",
+  ] as const;
+
+  const filtered = useMemo(() => {
+    return jobs.filter((j) => {
+      if (statusFilter !== "all" && j.status !== statusFilter) return false;
+      if (taskFilter !== "all" && j.taskType !== taskFilter) return false;
+      if (search && !j.id.toLowerCase().includes(search.toLowerCase()))
+        return false;
+      return true;
+    });
+  }, [jobs, statusFilter, taskFilter, search]);
+
+  const idleRobots = robots.filter(
+    (r) => r.status === "idle" && !r.currentJobId
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Status filters */}
+          <div className="flex gap-1">
+            {statusOptions.map((s) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`rounded-lg px-3 py-1.5 text-[12px] transition-colors ${
-                  tab === t
-                    ? "bg-surface-2 text-text-primary"
-                    : "text-text-tertiary hover:text-text-secondary"
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`font-mono text-[10px] px-2.5 py-1.5 rounded-lg border transition-colors ${
+                  statusFilter === s
+                    ? "border-accent/20 bg-accent/10 text-accent"
+                    : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
                 }`}
               >
-                {t.toUpperCase()}
+                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
-            <Link
-              href="/simulator"
-              className="ml-2 rounded-lg bg-accent/10 px-3 py-1.5 text-[12px] font-medium text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-            >
-              Simulator
-            </Link>
           </div>
+
+          {/* Task type filter */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setTaskFilter("all")}
+              className={`font-mono text-[10px] px-2.5 py-1.5 rounded-lg border transition-colors ${
+                taskFilter === "all"
+                  ? "border-blue-400/20 bg-blue-400/10 text-blue-400"
+                  : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
+              }`}
+            >
+              All Types
+            </button>
+            {TASK_TYPES.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTaskFilter(t)}
+                className={`font-mono text-[10px] px-2.5 py-1.5 rounded-lg border transition-colors ${
+                  taskFilter === t
+                    ? "border-blue-400/20 bg-blue-400/10 text-blue-400"
+                    : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search job ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="ml-auto rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/30 transition-colors w-44"
+          />
         </div>
       </div>
 
-      {/* Content */}
-      <div className="mx-auto max-w-[1400px] p-4 space-y-4">
-        <StatsBar />
+      {/* Job list */}
+      <div className="rounded-2xl border border-border bg-surface-1 overflow-hidden">
+        {/* Header */}
+        <div className="grid grid-cols-[1fr_70px_90px_90px_80px_80px_80px] gap-2 px-5 py-3 border-b border-border bg-surface-0">
+          {["Job ID", "Type", "Client", "Robot", "Route", "Bounty", "Status"].map(
+            (h) => (
+              <span
+                key={h}
+                className="font-mono text-[9px] text-text-tertiary uppercase tracking-wider"
+              >
+                {h}
+              </span>
+            )
+          )}
+        </div>
 
-        {tab === "overview" && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_400px]">
-            <div className="space-y-4">
-              <EarningsChart />
-              <JobQueue />
+        {/* Rows */}
+        <div className="max-h-[520px] overflow-y-auto">
+          {filtered.length === 0 && (
+            <div className="px-5 py-8 text-center font-mono text-[11px] text-text-tertiary">
+              No jobs match the current filters
             </div>
-            <div className="space-y-4">
-              <SettlementFeed />
-            </div>
-          </div>
-        )}
+          )}
+          {filtered.map((job) => {
+            const expanded = expandedId === job.id;
+            return (
+              <div key={job.id}>
+                <button
+                  onClick={() =>
+                    setExpandedId(expanded ? null : job.id)
+                  }
+                  className="w-full grid grid-cols-[1fr_70px_90px_90px_80px_80px_80px] gap-2 px-5 py-3 border-b border-border last:border-0 hover:bg-surface-2/20 transition-colors text-left"
+                >
+                  <div>
+                    <span className="font-mono text-[11px] text-text-primary">
+                      {job.id}
+                    </span>
+                    <div className="font-mono text-[9px] text-text-tertiary">
+                      {formatTime(job.createdAt)}
+                    </div>
+                  </div>
+                  <span className="font-mono text-[10px] text-text-secondary self-center">
+                    {job.taskType}
+                  </span>
+                  <span className="font-mono text-[10px] text-accent self-center truncate">
+                    {job.client}
+                  </span>
+                  <span className="font-mono text-[10px] text-blue-400 self-center">
+                    {job.robotName ?? "\u2014"}
+                  </span>
+                  <span className="font-mono text-[9px] text-text-tertiary self-center truncate">
+                    {job.from} {"\u2192"} {job.to}
+                  </span>
+                  <span className="font-mono text-[11px] text-text-primary self-center">
+                    {job.bounty.toFixed(2)}
+                  </span>
+                  <span
+                    className={`self-center font-mono text-[9px] font-semibold rounded-full px-2 py-0.5 text-center ${jobStatusColor(
+                      job.status
+                    )}`}
+                  >
+                    {jobStatusLabel(job.status)}
+                  </span>
+                </button>
 
-        {tab === "fleet" && (
-          <FleetOverview />
-        )}
+                {/* Expanded details */}
+                <AnimatePresence>
+                  {expanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-b border-border bg-surface-0 px-5 py-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          {[
+                            {
+                              label: "Schema",
+                              value: job.schema,
+                            },
+                            {
+                              label: "SLA",
+                              value: `${job.slaMinutes} min`,
+                            },
+                            {
+                              label: "Time Elapsed",
+                              value: job.timeElapsedMinutes
+                                ? `${job.timeElapsedMinutes.toFixed(1)} min`
+                                : "\u2014",
+                            },
+                            {
+                              label: "Bid",
+                              value: job.bid
+                                ? `${job.bid.toFixed(2)} USDC`
+                                : "\u2014",
+                            },
+                            {
+                              label: "From",
+                              value: job.from,
+                            },
+                            {
+                              label: "To",
+                              value: job.to,
+                            },
+                            {
+                              label: "Phase",
+                              value: job.phase,
+                            },
+                            {
+                              label: "TX Hash",
+                              value: job.txHash ?? "\u2014",
+                            },
+                          ].map((item) => (
+                            <div key={item.label}>
+                              <div className="font-mono text-[8px] text-text-tertiary uppercase">
+                                {item.label}
+                              </div>
+                              <div className="font-mono text-[11px] text-text-primary mt-0.5 truncate">
+                                {item.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
 
-        {tab === "policy" && (
-          <FleetPolicy />
-        )}
+                        {/* Assign robot for open jobs */}
+                        {job.status === "open" && (
+                          <div className="flex items-center gap-3 pt-2">
+                            <span className="font-mono text-[10px] text-text-tertiary">
+                              Assign Robot:
+                            </span>
+                            <select
+                              value={assignments[job.id] ?? ""}
+                              onChange={(e) =>
+                                setAssignments((prev) => ({
+                                  ...prev,
+                                  [job.id]: e.target.value,
+                                }))
+                              }
+                              className="rounded-lg border border-border bg-surface-1 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                            >
+                              <option value="">Select robot...</option>
+                              {idleRobots
+                                .filter((r) =>
+                                  r.capabilities.includes(job.taskType)
+                                )
+                                .map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name} ({r.battery}% battery)
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              disabled={!assignments[job.id]}
+                              className="font-mono text-[10px] px-3 py-1.5 rounded-lg border border-accent/20 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              Assign
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TAB 4: EARNINGS & ANALYTICS
+// ═════════════════════════════════════════════════════════════════════
+
+function EarningsTab({
+  robots,
+  jobs,
+  settlements,
+  earningsData,
+}: {
+  robots: Robot[];
+  jobs: Job[];
+  settlements: Settlement[];
+  earningsData: EarningsDataPoint[];
+}) {
+  const totalRevenue = settlements.reduce(
+    (s, t) => s + t.robotPayment,
+    0
+  );
+  const totalFees = settlements.reduce((s, t) => s + t.protocolFee, 0);
+  const netEarnings = totalRevenue - totalFees;
+  const completedJobs = jobs.filter((j) => j.status === "completed");
+  const avgPerJob =
+    completedJobs.length > 0 ? netEarnings / completedJobs.length : 0;
+
+  const maxEarning = Math.max(...earningsData.map((d) => d.amount), 1);
+
+  return (
+    <div className="space-y-5">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Total Revenue"
+          value={`${totalRevenue.toFixed(4)} USDC`}
+          accent
+        />
+        <StatCard
+          label="Protocol Fees Paid"
+          value={`${totalFees.toFixed(4)} USDC`}
+          sub={`${((totalFees / (totalRevenue || 1)) * 100).toFixed(2)}% rate`}
+        />
+        <StatCard
+          label="Net Earnings"
+          value={`${netEarnings.toFixed(4)} USDC`}
+          accent
+        />
+        <StatCard
+          label="Avg per Job"
+          value={`${avgPerJob.toFixed(4)} USDC`}
+          sub={`across ${completedJobs.length} jobs`}
+        />
+      </div>
+
+      {/* Bar chart */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider">
+              Earnings &mdash; 24h
+            </div>
+            <div className="mt-1 font-mono text-lg font-bold text-accent">
+              {earningsData
+                .reduce((s, d) => s + d.amount, 0)
+                .toFixed(1)}{" "}
+              USDC
+            </div>
+          </div>
+        </div>
+        <div className="flex items-end gap-[3px] h-28">
+          {earningsData.map((dp, i) => {
+            const height = maxEarning > 0 ? (dp.amount / maxEarning) * 100 : 0;
+            return (
+              <motion.div
+                key={i}
+                initial={{ height: 0 }}
+                animate={{ height: `${height}%` }}
+                transition={{ delay: i * 0.02, duration: 0.4 }}
+                className="flex-1 rounded-t-sm bg-accent/20 hover:bg-accent/40 transition-colors cursor-pointer relative group"
+              >
+                <div className="absolute -top-6 left-1/2 -translate-x-1/2 hidden group-hover:block font-mono text-[8px] text-accent bg-surface-0 border border-border rounded px-1 py-0.5 whitespace-nowrap z-10">
+                  {dp.hour}: {dp.amount.toFixed(1)}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+        <div className="flex justify-between mt-2">
+          {earningsData
+            .filter((_, i) => i % 6 === 0)
+            .map((dp) => (
+              <span
+                key={dp.hour}
+                className="font-mono text-[8px] text-text-tertiary"
+              >
+                {dp.hour}
+              </span>
+            ))}
+          <span className="font-mono text-[8px] text-text-tertiary">NOW</span>
+        </div>
+      </div>
+
+      {/* Per-robot breakdown */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-4">
+          Per-Robot Earnings Breakdown
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                {[
+                  "Robot",
+                  "Jobs Done",
+                  "Total Earned",
+                  "Today",
+                  "Avg / Job",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left font-mono text-[9px] text-text-tertiary uppercase tracking-wider pb-2 pr-4"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {robots.map((r) => {
+                const avg =
+                  r.jobsCompleted > 0
+                    ? r.earningsTotal / r.jobsCompleted
+                    : 0;
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-border last:border-0"
+                  >
+                    <td className="font-mono text-[11px] text-text-primary py-2.5 pr-4">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${robotStatusColor(
+                            r.status
+                          )}`}
+                        />
+                        {r.name}
+                      </span>
+                    </td>
+                    <td className="font-mono text-[11px] text-text-secondary py-2.5 pr-4">
+                      {r.jobsCompleted}
+                    </td>
+                    <td className="font-mono text-[11px] text-text-primary py-2.5 pr-4">
+                      {r.earningsTotal.toFixed(2)} USDC
+                    </td>
+                    <td className="font-mono text-[11px] text-accent py-2.5 pr-4">
+                      {r.earningsToday.toFixed(2)} USDC
+                    </td>
+                    <td className="font-mono text-[11px] text-text-secondary py-2.5">
+                      {avg.toFixed(2)} USDC
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Settlement history */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-4">
+          Settlement History
+        </div>
+        <div className="space-y-1.5">
+          {settlements.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center justify-between rounded-lg bg-surface-0 px-4 py-3"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/10">
+                  <span className="font-mono text-[7px] font-bold text-accent">
+                    {s.taskType.slice(0, 3)}
+                  </span>
+                </div>
+                <div>
+                  <div className="font-mono text-[11px] text-text-primary">
+                    <span className="text-accent">{s.client}</span>
+                    <span className="text-text-tertiary mx-1">{"\u2192"}</span>
+                    <span className="text-blue-400">{s.provider}</span>
+                  </div>
+                  <div className="font-mono text-[9px] text-text-tertiary">
+                    {s.jobId} &middot; {s.txHash} &middot; {s.chain}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-mono text-[11px] font-semibold text-accent">
+                  {s.robotPayment.toFixed(4)} USDC
+                </div>
+                <div className="font-mono text-[9px] text-text-tertiary">
+                  fee: {s.protocolFee.toFixed(4)} &middot;{" "}
+                  {formatTime(s.timestamp)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TAB 5: FLEET POLICIES
+// ═════════════════════════════════════════════════════════════════════
+
+function PoliciesTab({ policy }: { policy: FleetPolicy }) {
+  const [localPolicy, setLocalPolicy] = useState<FleetPolicy>({
+    ...policy,
+    priceFloors: { ...policy.priceFloors },
+    priceCeilings: { ...policy.priceCeilings },
+    geofenceBounds: {
+      lat: [...policy.geofenceBounds.lat] as [number, number],
+      lng: [...policy.geofenceBounds.lng] as [number, number],
+    },
+  });
+  const [saved, setSaved] = useState(false);
+
+  const toggleTaskType = (t: TaskType) => {
+    setLocalPolicy((p) => ({
+      ...p,
+      acceptedTaskTypes: p.acceptedTaskTypes.includes(t)
+        ? p.acceptedTaskTypes.filter((x) => x !== t)
+        : [...p.acceptedTaskTypes, t],
+    }));
+    setSaved(false);
+  };
+
+  const updateFloor = (t: TaskType, v: number) => {
+    setLocalPolicy((p) => ({
+      ...p,
+      priceFloors: { ...p.priceFloors, [t]: v },
+    }));
+    setSaved(false);
+  };
+
+  const updateCeiling = (t: TaskType, v: number) => {
+    setLocalPolicy((p) => ({
+      ...p,
+      priceCeilings: { ...p.priceCeilings, [t]: v },
+    }));
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      {/* Policy editor */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider">
+          Policy Editor
+        </div>
+
+        {/* Accepted task types */}
+        <div>
+          <div className="font-mono text-[10px] text-text-tertiary uppercase mb-2">
+            Accepted Task Types
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {TASK_TYPES.map((t) => {
+              const active = localPolicy.acceptedTaskTypes.includes(t);
+              return (
+                <button
+                  key={t}
+                  onClick={() => toggleTaskType(t)}
+                  className={`font-mono text-[10px] px-3 py-1.5 rounded-lg border transition-colors ${
+                    active
+                      ? "border-accent/20 bg-accent/10 text-accent"
+                      : "border-border bg-surface-0 text-text-tertiary"
+                  }`}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Price controls */}
+        <div>
+          <div className="font-mono text-[10px] text-text-tertiary uppercase mb-2">
+            Price Controls (USDC)
+          </div>
+          <div className="space-y-2">
+            {TASK_TYPES.map((t) => (
+              <div key={t} className="flex items-center gap-3">
+                <span className="font-mono text-[10px] text-text-secondary w-20">
+                  {t}
+                </span>
+                <div className="flex-1">
+                  <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                    Floor
+                  </div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={localPolicy.priceFloors[t]}
+                    onChange={(e) =>
+                      updateFloor(t, parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                  />
+                </div>
+                <div className="flex-1">
+                  <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                    Ceiling
+                  </div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={localPolicy.priceCeilings[t]}
+                    onChange={(e) =>
+                      updateCeiling(t, parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Max concurrent jobs */}
+        <div>
+          <div className="font-mono text-[10px] text-text-tertiary uppercase mb-1.5">
+            Max Concurrent Jobs
+          </div>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            value={localPolicy.maxConcurrentJobs}
+            onChange={(e) => {
+              setLocalPolicy((p) => ({
+                ...p,
+                maxConcurrentJobs: parseInt(e.target.value) || 1,
+              }));
+              setSaved(false);
+            }}
+            className="w-32 rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+          />
+        </div>
+
+        {/* Geofence */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-[10px] text-text-tertiary uppercase">
+              Geofence
+            </span>
+            <Toggle
+              enabled={localPolicy.geofenceEnabled}
+              onToggle={() => {
+                setLocalPolicy((p) => ({
+                  ...p,
+                  geofenceEnabled: !p.geofenceEnabled,
+                }));
+                setSaved(false);
+              }}
+            />
+          </div>
+          {localPolicy.geofenceEnabled && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                  Lat Min
+                </div>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={localPolicy.geofenceBounds.lat[0]}
+                  onChange={(e) => {
+                    setLocalPolicy((p) => ({
+                      ...p,
+                      geofenceBounds: {
+                        ...p.geofenceBounds,
+                        lat: [
+                          parseFloat(e.target.value) || 0,
+                          p.geofenceBounds.lat[1],
+                        ],
+                      },
+                    }));
+                    setSaved(false);
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                />
+              </div>
+              <div>
+                <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                  Lat Max
+                </div>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={localPolicy.geofenceBounds.lat[1]}
+                  onChange={(e) => {
+                    setLocalPolicy((p) => ({
+                      ...p,
+                      geofenceBounds: {
+                        ...p.geofenceBounds,
+                        lat: [
+                          p.geofenceBounds.lat[0],
+                          parseFloat(e.target.value) || 0,
+                        ],
+                      },
+                    }));
+                    setSaved(false);
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                />
+              </div>
+              <div>
+                <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                  Lng Min
+                </div>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={localPolicy.geofenceBounds.lng[0]}
+                  onChange={(e) => {
+                    setLocalPolicy((p) => ({
+                      ...p,
+                      geofenceBounds: {
+                        ...p.geofenceBounds,
+                        lng: [
+                          parseFloat(e.target.value) || 0,
+                          p.geofenceBounds.lng[1],
+                        ],
+                      },
+                    }));
+                    setSaved(false);
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                />
+              </div>
+              <div>
+                <div className="font-mono text-[8px] text-text-tertiary mb-0.5">
+                  Lng Max
+                </div>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={localPolicy.geofenceBounds.lng[1]}
+                  onChange={(e) => {
+                    setLocalPolicy((p) => ({
+                      ...p,
+                      geofenceBounds: {
+                        ...p.geofenceBounds,
+                        lng: [
+                          p.geofenceBounds.lng[0],
+                          parseFloat(e.target.value) || 0,
+                        ],
+                      },
+                    }));
+                    setSaved(false);
+                  }}
+                  className="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Auto-accept */}
+        <div className="flex items-center justify-between rounded-lg bg-surface-0 px-4 py-3">
+          <span className="font-mono text-[11px] text-text-secondary">
+            Auto-accept matching jobs
+          </span>
+          <Toggle
+            enabled={localPolicy.autoAccept}
+            onToggle={() => {
+              setLocalPolicy((p) => ({
+                ...p,
+                autoAccept: !p.autoAccept,
+              }));
+              setSaved(false);
+            }}
+          />
+        </div>
+
+        {/* Max daily withdraw */}
+        <div>
+          <div className="font-mono text-[10px] text-text-tertiary uppercase mb-1.5">
+            Max Daily Withdraw (USDC)
+          </div>
+          <input
+            type="number"
+            min="0"
+            step="10"
+            value={localPolicy.maxDailyWithdraw}
+            onChange={(e) => {
+              setLocalPolicy((p) => ({
+                ...p,
+                maxDailyWithdraw: parseFloat(e.target.value) || 0,
+              }));
+              setSaved(false);
+            }}
+            className="w-32 rounded-lg border border-border bg-surface-0 px-3 py-1.5 font-mono text-[11px] text-text-primary outline-none focus:border-accent/30 transition-colors"
+          />
+        </div>
+
+        {/* Save */}
+        <button
+          onClick={handleSave}
+          className={`w-full rounded-lg px-4 py-2.5 font-mono text-[12px] font-semibold transition-colors ${
+            saved
+              ? "bg-green-500/10 border border-green-500/20 text-green-400"
+              : "bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20"
+          }`}
+        >
+          {saved ? "Policy Saved" : "Save Policy"}
+        </button>
+      </div>
+
+      {/* Current policy display */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-4">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider">
+          Current Policy (Active)
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-lg bg-surface-0 px-4 py-3">
+            <div className="font-mono text-[9px] text-text-tertiary uppercase">
+              Accepted Tasks
+            </div>
+            <div className="flex gap-1.5 mt-1.5">
+              {policy.acceptedTaskTypes.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[9px] text-accent"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-surface-0 px-4 py-3">
+            <div className="font-mono text-[9px] text-text-tertiary uppercase mb-2">
+              Price Bounds
+            </div>
+            {TASK_TYPES.map((t) => (
+              <div
+                key={t}
+                className="flex items-center justify-between py-1 border-b border-border last:border-0"
+              >
+                <span className="font-mono text-[10px] text-text-secondary">
+                  {t}
+                </span>
+                <span className="font-mono text-[10px] text-text-primary">
+                  {policy.priceFloors[t].toFixed(2)} &mdash;{" "}
+                  {policy.priceCeilings[t].toFixed(2)} USDC
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {[
+            {
+              label: "Max Concurrent Jobs",
+              value: String(policy.maxConcurrentJobs),
+            },
+            {
+              label: "Geofence",
+              value: policy.geofenceEnabled ? "Enabled" : "Disabled",
+            },
+            {
+              label: "Auto-Accept",
+              value: policy.autoAccept ? "On" : "Off",
+            },
+            {
+              label: "Max Daily Withdraw",
+              value: `${policy.maxDailyWithdraw} USDC`,
+            },
+            {
+              label: "Emergency Paused",
+              value: policy.emergencyPaused ? "YES" : "No",
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="flex items-center justify-between rounded-lg bg-surface-0 px-4 py-2.5"
+            >
+              <span className="font-mono text-[10px] text-text-tertiary">
+                {item.label}
+              </span>
+              <span className="font-mono text-[11px] text-text-primary">
+                {item.value}
+              </span>
+            </div>
+          ))}
+
+          {policy.geofenceEnabled && (
+            <div className="rounded-lg bg-surface-0 px-4 py-3">
+              <div className="font-mono text-[9px] text-text-tertiary uppercase mb-1">
+                Geofence Bounds
+              </div>
+              <div className="font-mono text-[10px] text-text-secondary">
+                Lat: {policy.geofenceBounds.lat[0]} to{" "}
+                {policy.geofenceBounds.lat[1]}
+              </div>
+              <div className="font-mono text-[10px] text-text-secondary">
+                Lng: {policy.geofenceBounds.lng[0]} to{" "}
+                {policy.geofenceBounds.lng[1]}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// TAB 6: EMERGENCY CONTROLS
+// ═════════════════════════════════════════════════════════════════════
+
+function EmergencyTab({
+  robots,
+  pausedRobots,
+  fleetPaused,
+  onTogglePause,
+  onToggleFleetPause,
+}: {
+  robots: Robot[];
+  pausedRobots: Set<string>;
+  fleetPaused: boolean;
+  onTogglePause: (id: string) => void;
+  onToggleFleetPause: () => void;
+}) {
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertSent, setAlertSent] = useState(false);
+
+  const emergencyLog = [
+    {
+      time: "2026-03-08 02:14:33",
+      action: "Fleet resumed after maintenance window",
+      severity: "info",
+    },
+    {
+      time: "2026-03-08 01:45:00",
+      action: "EMERGENCY PAUSE triggered — sensor anomaly on G1-EPSILON",
+      severity: "critical",
+    },
+    {
+      time: "2026-03-07 23:12:18",
+      action: "G1-EPSILON paused — motor fault detected",
+      severity: "warning",
+    },
+    {
+      time: "2026-03-07 22:30:00",
+      action: "Geofence breach alert — G1-GAMMA near boundary",
+      severity: "warning",
+    },
+    {
+      time: "2026-03-07 18:00:00",
+      action: "Scheduled maintenance pause — all robots",
+      severity: "info",
+    },
+    {
+      time: "2026-03-07 14:22:07",
+      action: "Alert broadcast: 'Zone C restricted until 16:00'",
+      severity: "info",
+    },
+  ];
+
+  const severityColor = (s: string) => {
+    switch (s) {
+      case "critical":
+        return "text-red-400 bg-red-400/10";
+      case "warning":
+        return "text-yellow-400 bg-yellow-400/10";
+      default:
+        return "text-blue-400 bg-blue-400/10";
+    }
+  };
+
+  const handleSendAlert = () => {
+    if (!alertMessage.trim()) return;
+    setAlertSent(true);
+    setTimeout(() => {
+      setAlertSent(false);
+      setAlertMessage("");
+    }, 2000);
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Emergency pause button */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-8 flex flex-col items-center">
+        <div className="mb-4 font-mono text-[11px] text-text-tertiary uppercase tracking-wider">
+          Fleet Status:{" "}
+          <span
+            className={`font-semibold ${
+              fleetPaused ? "text-red-400" : "text-green-400"
+            }`}
+          >
+            {fleetPaused ? "PAUSED" : "ACTIVE"}
+          </span>
+        </div>
+        <button
+          onClick={onToggleFleetPause}
+          className={`rounded-xl px-12 py-5 font-mono text-[14px] font-bold transition-all ${
+            fleetPaused
+              ? "bg-green-500/10 border-2 border-green-500/30 text-green-400 hover:bg-green-500/20 hover:border-green-500/50"
+              : "bg-red-500/10 border-2 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:border-red-500/50"
+          }`}
+        >
+          {fleetPaused
+            ? "RESUME ALL ROBOTS"
+            : "EMERGENCY PAUSE ALL"}
+        </button>
+        <div className="mt-3 font-mono text-[10px] text-text-tertiary">
+          {fleetPaused
+            ? "All robots are currently halted. Click to resume operations."
+            : "This will immediately halt all robot operations."}
+        </div>
+      </div>
+
+      {/* Individual robot controls */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-4">
+          Individual Robot Controls
+        </div>
+        <div className="space-y-1.5">
+          {robots.map((robot) => {
+            const isPaused = pausedRobots.has(robot.id) || fleetPaused;
+            return (
+              <div
+                key={robot.id}
+                className="flex items-center justify-between rounded-lg bg-surface-0 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      isPaused ? "bg-red-400" : robotStatusColor(robot.status)
+                    }`}
+                  />
+                  <span className="font-mono text-[12px] font-semibold text-text-primary">
+                    {robot.name}
+                  </span>
+                  <span className="font-mono text-[10px] text-text-tertiary">
+                    {robot.location}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`font-mono text-[10px] ${
+                      isPaused ? "text-red-400" : "text-green-400"
+                    }`}
+                  >
+                    {isPaused ? "PAUSED" : "RUNNING"}
+                  </span>
+                  <button
+                    onClick={() => onTogglePause(robot.id)}
+                    disabled={fleetPaused}
+                    className={`font-mono text-[10px] px-3 py-1.5 rounded-lg border transition-colors ${
+                      fleetPaused
+                        ? "border-border bg-surface-1 text-text-tertiary cursor-not-allowed opacity-40"
+                        : isPaused
+                        ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
+                        : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                    }`}
+                  >
+                    {isPaused ? "Resume" : "Pause"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Alert broadcast */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-3">
+          Alert Broadcast
+        </div>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            placeholder="Type alert message to broadcast to all robots..."
+            value={alertMessage}
+            onChange={(e) => setAlertMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSendAlert()}
+            className="flex-1 rounded-lg border border-border bg-surface-0 px-4 py-2.5 font-mono text-[11px] text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/30 transition-colors"
+          />
+          <button
+            onClick={handleSendAlert}
+            disabled={!alertMessage.trim()}
+            className={`rounded-lg px-5 py-2.5 font-mono text-[11px] font-semibold border transition-colors ${
+              alertSent
+                ? "border-green-500/20 bg-green-500/10 text-green-400"
+                : "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-30 disabled:cursor-not-allowed"
+            }`}
+          >
+            {alertSent ? "Sent" : "Send Alert"}
+          </button>
+        </div>
+      </div>
+
+      {/* Emergency log */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="font-mono text-[11px] text-text-tertiary uppercase tracking-wider mb-4">
+          Emergency Log
+        </div>
+        <div className="space-y-1.5">
+          {emergencyLog.map((entry, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-3 rounded-lg bg-surface-0 px-4 py-3"
+            >
+              <span
+                className={`shrink-0 mt-0.5 font-mono text-[8px] font-bold uppercase rounded-full px-1.5 py-0.5 ${severityColor(
+                  entry.severity
+                )}`}
+              >
+                {entry.severity}
+              </span>
+              <div className="min-w-0">
+                <div className="font-mono text-[11px] text-text-primary">
+                  {entry.action}
+                </div>
+                <div className="font-mono text-[9px] text-text-tertiary mt-0.5">
+                  {entry.time}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═════════════════════════════════════════════════════════════════════
+
+export default function DashboardPage() {
+  const [tab, setTab] = useState<OperatorTab>("overview");
+  const [pausedRobots, setPausedRobots] = useState<Set<string>>(new Set());
+  const [fleetPaused, setFleetPaused] = useState(false);
+
+  const togglePause = (robotId: string) => {
+    setPausedRobots((prev) => {
+      const next = new Set(prev);
+      if (next.has(robotId)) {
+        next.delete(robotId);
+      } else {
+        next.add(robotId);
+      }
+      return next;
+    });
+  };
+
+  const toggleFleetPause = () => {
+    setFleetPaused((prev) => !prev);
+    if (!fleetPaused) {
+      setPausedRobots(new Set(ROBOTS.map((r) => r.id)));
+    } else {
+      setPausedRobots(new Set());
+    }
+  };
+
+  return (
+    <AppShell role="operator" activeTab={tab} onTabChange={(t) => setTab(t as OperatorTab)}>
+      {tab === "overview" && (
+        <OverviewTab
+          robots={ROBOTS}
+          jobs={JOBS}
+          settlements={SETTLEMENTS}
+          pausedRobots={pausedRobots}
+          onTogglePause={togglePause}
+        />
+      )}
+
+      {tab === "fleet" && (
+        <FleetTab
+          robots={ROBOTS}
+          jobs={JOBS}
+          pausedRobots={pausedRobots}
+          onTogglePause={togglePause}
+        />
+      )}
+
+      {tab === "jobs" && <JobsTab robots={ROBOTS} jobs={JOBS} />}
+
+      {tab === "earnings" && (
+        <EarningsTab
+          robots={ROBOTS}
+          jobs={JOBS}
+          settlements={SETTLEMENTS}
+          earningsData={EARNINGS_24H}
+        />
+      )}
+
+      {tab === "policies" && <PoliciesTab policy={FLEET_POLICY} />}
+
+      {tab === "emergency" && (
+        <EmergencyTab
+          robots={ROBOTS}
+          pausedRobots={pausedRobots}
+          fleetPaused={fleetPaused}
+          onTogglePause={togglePause}
+          onToggleFleetPause={toggleFleetPause}
+        />
+      )}
+    </AppShell>
   );
 }

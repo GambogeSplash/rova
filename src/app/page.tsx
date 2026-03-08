@@ -59,10 +59,10 @@ function Nav() {
   const links = [
     { label: "Product", href: "#product" },
     { label: "Ecosystem", href: "#ecosystem" },
-    { label: "News", href: "#news" },
-    { label: "Simulator", href: "/simulator" },
+    { label: "Agent", href: "/agent" },
+    { label: "Robot", href: "/robot" },
     { label: "Dashboard", href: "/dashboard" },
-    { label: "Docs", href: "#" },
+    { label: "Simulator", href: "/simulator" },
   ];
 
   return (
