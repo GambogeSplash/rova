@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# reference/inspo files
+inspo.md
+style.md
+DESIGN-DIRECTION.md
+
+# foundry build artifacts
+contracts/cache/
+contracts/out/
+contracts/lib/
