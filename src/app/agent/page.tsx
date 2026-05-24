@@ -138,7 +138,7 @@ function RegistryTab({
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="font-mono text-[13px] font-semibold text-blue-400">{o.robotName}</span>
+                  <span className="font-mono text-[13px] font-semibold text-teal">{o.robotName}</span>
                   <span className="font-mono text-[11px] text-text-tertiary ml-2">{o.robotModel}</span>
                 </div>
                 <TaskBadge type={o.taskType} />
@@ -341,9 +341,9 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
         {preselected && (
           <div className="space-y-2">
             <label className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Selected Robot</label>
-            <div className="rounded-xl border border-blue-400/20 bg-blue-400/5 p-4 flex items-center justify-between">
+            <div className="rounded-xl border border-teal/20 bg-teal/5 p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="font-mono text-[13px] font-semibold text-blue-400">{preselected.robotName}</span>
+                <span className="font-mono text-[13px] font-semibold text-teal">{preselected.robotName}</span>
                 <span className="font-mono text-[11px] text-text-tertiary">{preselected.robotModel}</span>
               </div>
               <div className="flex items-center gap-4">
@@ -637,11 +637,11 @@ function HistoryTab() {
               className="grid grid-cols-8 gap-2 px-5 py-3 border-b border-border/40 last:border-b-0 hover:bg-surface-0/30 transition-colors"
             >
               <span className="font-mono text-[11px] text-text-primary truncate">{s.jobId}</span>
-              <span className="font-mono text-[11px] text-blue-400 truncate">{s.provider}</span>
+              <span className="font-mono text-[11px] text-teal truncate">{s.provider}</span>
               <span><TaskBadge type={s.taskType} /></span>
               <span className="font-mono text-[11px] text-accent">{s.robotPayment.toFixed(4)}</span>
               <span className="font-mono text-[11px] text-text-secondary">{s.protocolFee.toFixed(4)}</span>
-              <span className={`font-mono text-[11px] ${s.refund > 0 ? "text-yellow-400" : "text-text-tertiary"}`}>
+              <span className={`font-mono text-[11px] ${s.refund > 0 ? "text-amber" : "text-text-tertiary"}`}>
                 {s.refund > 0 ? s.refund.toFixed(2) : "---"}
               </span>
               <span className="font-mono text-[11px] text-text-tertiary truncate">
@@ -702,7 +702,7 @@ function WalletTab() {
                 className="rounded-xl border border-border bg-surface-0 p-4 flex items-center justify-between"
               >
                 <div className="flex items-center gap-3">
-                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${s.robotPayment > 0 ? "bg-accent" : "bg-red-400"}`} />
+                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${s.robotPayment > 0 ? "bg-accent" : "bg-alert"}`} />
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[12px] text-text-primary">{s.jobId}</span>
@@ -718,7 +718,7 @@ function WalletTab() {
                     -{(s.robotPayment + s.protocolFee).toFixed(4)}
                   </span>
                   {s.refund > 0 && (
-                    <span className="font-mono text-[10px] text-yellow-400">+{s.refund.toFixed(2)} refund</span>
+                    <span className="font-mono text-[10px] text-amber">+{s.refund.toFixed(2)} refund</span>
                   )}
                 </div>
               </motion.div>

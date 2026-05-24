@@ -174,20 +174,20 @@ function RoleSelection({ onSelect }: { onSelect: (role: Role) => void }) {
           whileHover={{ y: -4 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => onSelect("operator")}
-          className="text-left rounded-2xl border border-blue-400/20 p-8 card-elevated"
+          className="text-left rounded-2xl border border-teal/20 p-8 card-elevated"
           style={{ background: "linear-gradient(145deg, rgba(96,165,250,0.04), transparent)" }}
         >
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-400/10 border border-blue-400/20">
-              <span className="font-mono text-sm font-bold text-blue-400">R</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal/10 border border-teal/20">
+              <span className="font-mono text-sm font-bold text-teal">R</span>
             </div>
-            <span className="font-mono text-[10px] text-blue-400">PROVIDER</span>
+            <span className="font-mono text-[10px] text-teal">PROVIDER</span>
           </div>
           <h3 className="text-lg font-semibold text-text-primary mb-2">I&apos;m a Fleet Operator</h3>
           <p className="text-sm text-text-secondary leading-relaxed">
             I have robots that can do physical work. Register them on ROVA and start earning from agent tasks.
           </p>
-          <div className="mt-5 font-mono text-[10px] text-blue-400/60">
+          <div className="mt-5 font-mono text-[10px] text-teal/60">
             Register &rarr; Stake &rarr; Earn
           </div>
         </motion.button>
@@ -287,8 +287,8 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
         {step === "select" && (
           <motion.div key="select" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-blue-400">SELECT A ROBOT</span>
+              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
+              <span className="font-mono text-xs text-teal">SELECT A ROBOT</span>
             </div>
             <p className="text-sm text-text-secondary mb-6">
               {AVAILABLE_ROBOTS.length} robots available for <span className="text-accent">{task.taskType}</span> tasks. Select one based on price, ETA, and reputation.
@@ -309,7 +309,7 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${selectedRobot === robot.id ? "bg-accent shadow-[0_0_8px_rgba(239,111,46,0.4)]" : "bg-blue-400"} animate-pulse`} />
+                      <div className={`h-3 w-3 rounded-full ${selectedRobot === robot.id ? "bg-accent shadow-[0_0_8px_rgba(239,111,46,0.4)]" : "bg-teal"} animate-pulse`} />
                       <span className="font-mono text-sm font-bold text-text-primary">{robot.id}</span>
                     </div>
                     <span className="font-mono text-lg font-bold text-accent">{robot.price} <span className="text-xs text-text-tertiary">USDC</span></span>
@@ -345,13 +345,13 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
         )}
 
         {step === "escrow" && (
-          <motion.div key="escrow" {...fadeIn} className="rounded-2xl border border-yellow-400/20 p-8 card-elevated text-center">
+          <motion.div key="escrow" {...fadeIn} className="rounded-2xl border border-amber/20 p-8 card-elevated text-center">
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="mx-auto mb-6 h-12 w-12 rounded-full border-2 border-yellow-400/30 border-t-yellow-400"
+              className="mx-auto mb-6 h-12 w-12 rounded-full border-2 border-amber/30 border-t-yellow-400"
             />
-            <span className="font-mono text-xs text-yellow-400">LOCKING ESCROW</span>
+            <span className="font-mono text-xs text-amber">LOCKING ESCROW</span>
             <h3 className="mt-2 text-lg font-semibold text-text-primary">Securing {AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC</h3>
             <p className="mt-2 text-sm text-text-secondary">Bounty is being locked in ROVAMarket.sol escrow contract on Base Sepolia...</p>
             <div className="mt-4"><MockTxHash /></div>
@@ -359,10 +359,10 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
         )}
 
         {step === "tracking" && (
-          <motion.div key="tracking" {...fadeIn} className="rounded-2xl border border-blue-400/20 p-8 card-elevated">
+          <motion.div key="tracking" {...fadeIn} className="rounded-2xl border border-teal/20 p-8 card-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-blue-400">ROBOT EXECUTING</span>
+              <div className="h-2 w-2 rounded-full bg-teal animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
+              <span className="font-mono text-xs text-teal">ROBOT EXECUTING</span>
             </div>
 
             <div className="space-y-3 font-mono text-xs">
@@ -371,20 +371,20 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
                 <span className="text-text-secondary">{AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC locked &middot; <MockTxHash /></span>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-blue-400">[{selectedRobot}]</span>
+                <span className="text-teal">[{selectedRobot}]</span>
                 <span className="text-text-secondary">Job accepted &middot; navigating to {task.from}...</span>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-blue-400">[{selectedRobot}]</span>
+                <span className="text-teal">[{selectedRobot}]</span>
                 <span className="text-text-secondary">Arrived at {task.from} &middot; picking up payload...</span>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-blue-400">[{selectedRobot}]</span>
+                <span className="text-teal">[{selectedRobot}]</span>
                 <span className="text-text-secondary">Navigating to {task.to} &middot; payload secured...</span>
               </motion.div>
               {settling && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 rounded-lg bg-accent/[0.04] border border-accent/10 p-3">
-                  <span className="text-purple-400">[VERIFIER]</span>
+                  <span className="text-slate">[VERIFIER]</span>
                   <span className="text-text-secondary">GPS confirmed &middot; SLA met &middot; submitting proof...</span>
                 </motion.div>
               )}
@@ -417,7 +417,7 @@ function AgentFlow({ onBack }: { onBack: () => void }) {
 
             <div className="mt-6 rounded-xl border border-border bg-surface-0 p-5 text-left space-y-2">
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Task</span><span className="font-mono text-xs text-text-primary">{task.taskType}: {task.from} &rarr; {task.to}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-blue-400">{selectedRobot}</span></div>
+              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-teal">{selectedRobot}</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Paid to robot</span><span className="font-mono text-xs text-accent">{AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Refunded</span><span className="font-mono text-xs text-text-primary">{(parseFloat(task.bounty) - (AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price ?? 0)).toFixed(2)} USDC</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Time</span><span className="font-mono text-xs text-text-primary">2m 48s / {task.sla}m</span></div>
@@ -477,8 +477,8 @@ function OperatorFlow({ onBack }: { onBack: () => void }) {
         {step === "register" && (
           <motion.div key="register" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-blue-400">REGISTER ROBOT</span>
+              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
+              <span className="font-mono text-xs text-teal">REGISTER ROBOT</span>
             </div>
             <p className="text-sm text-text-secondary mb-6">Register your robot on the ROVA registry. It will be assigned an onchain identity and can start receiving jobs.</p>
 
@@ -507,10 +507,10 @@ function OperatorFlow({ onBack }: { onBack: () => void }) {
         {step === "capabilities" && (
           <motion.div key="capabilities" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-blue-400">SET CAPABILITIES</span>
+              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
+              <span className="font-mono text-xs text-teal">SET CAPABILITIES</span>
             </div>
-            <p className="text-sm text-text-secondary mb-6">What can <span className="text-blue-400">{robot.name}</span> do? Select all task types your robot can perform.</p>
+            <p className="text-sm text-text-secondary mb-6">What can <span className="text-teal">{robot.name}</span> do? Select all task types your robot can perform.</p>
 
             <div className="grid grid-cols-2 gap-3">
               {TASK_TYPES.map((type) => {
@@ -561,7 +561,7 @@ function OperatorFlow({ onBack }: { onBack: () => void }) {
               <span className="font-mono text-xs text-accent">STAKE ROVA</span>
             </div>
             <p className="text-sm text-text-secondary mb-6">
-              Stake ROVA tokens to activate <span className="text-blue-400">{robot.name}</span> on the registry. Higher stake = higher trust score = more jobs won.
+              Stake ROVA tokens to activate <span className="text-teal">{robot.name}</span> on the registry. Higher stake = higher trust score = more jobs won.
             </p>
 
             <FormField label="Stake Amount (ROVA)">
@@ -572,7 +572,7 @@ function OperatorFlow({ onBack }: { onBack: () => void }) {
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Min Stake</span><span className="font-mono text-xs text-text-primary">100 ROVA</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Your Stake</span><span className="font-mono text-xs text-accent">{stakeAmount} ROVA</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Trust Score</span><span className="font-mono text-xs text-accent">{parseInt(stakeAmount) >= 500 ? "High" : parseInt(stakeAmount) >= 250 ? "Medium" : "Low"}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Slash Risk</span><span className="font-mono text-xs text-yellow-400">10% of bid on failure</span></div>
+              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Slash Risk</span><span className="font-mono text-xs text-amber">10% of bid on failure</span></div>
             </div>
 
             {staking ? (
@@ -670,7 +670,7 @@ function OperatorFlow({ onBack }: { onBack: () => void }) {
             <p className="mt-2 text-sm text-text-secondary">Your robot is registered, staked, and accepting jobs on the ROVA marketplace.</p>
 
             <div className="mt-6 rounded-xl border border-border bg-surface-0 p-5 text-left space-y-2">
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-blue-400">{robot.name}</span></div>
+              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-teal">{robot.name}</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Model</span><span className="font-mono text-xs text-text-primary">{robot.model}</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Stake</span><span className="font-mono text-xs text-accent">{stakeAmount} ROVA</span></div>
               <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Capabilities</span><span className="font-mono text-xs text-text-primary">{capabilities.join(", ")}</span></div>

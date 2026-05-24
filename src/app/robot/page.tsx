@@ -351,13 +351,13 @@ function ActiveJobTab() {
               animate={{ width: `${progressPct}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className={`h-full rounded-full ${
-                progressPct > 80 ? "bg-red-400" : progressPct > 60 ? "bg-yellow-400" : "bg-accent"
+                progressPct > 80 ? "bg-alert" : progressPct > 60 ? "bg-amber" : "bg-accent"
               }`}
             />
           </div>
           <div className="flex justify-between">
             <span className="font-mono text-[10px] text-text-tertiary">0m</span>
-            <span className={`font-mono text-[10px] ${progressPct > 80 ? "text-red-400" : "text-text-tertiary"}`}>
+            <span className={`font-mono text-[10px] ${progressPct > 80 ? "text-alert" : "text-text-tertiary"}`}>
               {progressPct.toFixed(0)}%
             </span>
             <span className="font-mono text-[10px] text-text-tertiary">{activeJob.slaMinutes}m</span>
@@ -811,8 +811,8 @@ function CapabilitiesTab() {
       <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-0">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-blue-400/10 border border-blue-400/20 flex items-center justify-center">
-              <span className="font-mono text-[11px] font-bold text-blue-400">G1</span>
+            <div className="h-8 w-8 rounded-full bg-teal/10 border border-teal/20 flex items-center justify-center">
+              <span className="font-mono text-[11px] font-bold text-teal">G1</span>
             </div>
             <div>
               <span className="font-mono text-[14px] font-semibold text-text-primary block">{ROBOT.name}</span>
@@ -931,7 +931,7 @@ function CapabilitiesTab() {
               animate={{ width: `${stakeHealth}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className={`h-full rounded-full ${
-                stakeHealth > 80 ? "bg-accent" : stakeHealth > 50 ? "bg-yellow-400" : "bg-red-400"
+                stakeHealth > 80 ? "bg-accent" : stakeHealth > 50 ? "bg-amber" : "bg-alert"
               }`}
             />
           </div>

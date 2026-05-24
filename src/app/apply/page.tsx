@@ -163,10 +163,10 @@ export default function ApplicationPage() {
             <div className="rounded-xl border border-border bg-surface-0 p-4 font-mono text-xs leading-relaxed space-y-1">
               <div><span className="text-text-tertiary">1.</span> <span className="text-accent">Agent</span> browses ROVA registry</div>
               <div><span className="text-text-tertiary">2.</span> <span className="text-accent">Agent</span> selects robot&apos;s Job Offering (e.g. CARRY at 1.75 USDC)</div>
-              <div><span className="text-text-tertiary">3.</span> <span className="text-yellow-400">Escrow</span> locks bounty onchain</div>
-              <div><span className="text-text-tertiary">4.</span> <span className="text-blue-400">Robot</span> receives job via ROVA SDK</div>
-              <div><span className="text-text-tertiary">5.</span> <span className="text-blue-400">Robot</span> executes physical task</div>
-              <div><span className="text-text-tertiary">6.</span> <span className="text-purple-400">Verifier</span> confirms completion (GPS + timestamp proof)</div>
+              <div><span className="text-text-tertiary">3.</span> <span className="text-amber">Escrow</span> locks bounty onchain</div>
+              <div><span className="text-text-tertiary">4.</span> <span className="text-teal">Robot</span> receives job via ROVA SDK</div>
+              <div><span className="text-text-tertiary">5.</span> <span className="text-teal">Robot</span> executes physical task</div>
+              <div><span className="text-text-tertiary">6.</span> <span className="text-slate">Verifier</span> confirms completion (GPS + timestamp proof)</div>
               <div><span className="text-text-tertiary">7.</span> <span className="text-accent">Escrow</span> releases to robot wallet</div>
             </div>
           </Field>
@@ -253,11 +253,11 @@ export default function ApplicationPage() {
               <div><span className="text-accent font-semibold">[MERCHANT-7]</span> <span className="text-text-secondary">POST CARRY &middot; Rack B3 {"\u2192"} Dispatch Bay 2 &middot; 2.00 USDC &middot; SLA 5min</span></div>
               <div><span className="text-text-tertiary font-semibold">[REGISTRY]</span> <span className="text-text-secondary">3 robots available: G1-ALPHA (1.75, 2min, 4.9) &middot; G1-BETA (1.90, 3min, 4.7) &middot; G1-DELTA (1.80, 2.5min, 4.8)</span></div>
               <div><span className="text-accent font-semibold">[MERCHANT-7]</span> <span className="text-text-secondary">SELECT G1-ALPHA &middot; best price + highest rep</span></div>
-              <div><span className="text-yellow-400 font-semibold">[ESCROW]</span> <span className="text-text-secondary">1.75 USDC locked &middot; tx 0x3f8a...c2d1</span></div>
-              <div><span className="text-blue-400 font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Rack B3... arrived &middot; picking up... secured</span></div>
-              <div><span className="text-blue-400 font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Dispatch Bay 2... arrived &middot; delivering... complete</span></div>
-              <div><span className="text-blue-400 font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">SUBMIT proof &middot; GPS (52.41, -1.51) &middot; time 3m12s &middot; hash 0x9e2b...f4a7</span></div>
-              <div><span className="text-purple-400 font-semibold">[VERIFIER]</span> <span className="text-text-secondary">GPS confirmed &middot; SLA met (3m12s / 5m00s) &middot; proof valid</span></div>
+              <div><span className="text-amber font-semibold">[ESCROW]</span> <span className="text-text-secondary">1.75 USDC locked &middot; tx 0x3f8a...c2d1</span></div>
+              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Rack B3... arrived &middot; picking up... secured</span></div>
+              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Dispatch Bay 2... arrived &middot; delivering... complete</span></div>
+              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">SUBMIT proof &middot; GPS (52.41, -1.51) &middot; time 3m12s &middot; hash 0x9e2b...f4a7</span></div>
+              <div><span className="text-slate font-semibold">[VERIFIER]</span> <span className="text-text-secondary">GPS confirmed &middot; SLA met (3m12s / 5m00s) &middot; proof valid</span></div>
               <div><span className="text-accent font-semibold">[SETTLED]</span> <span className="text-text-secondary">1.75 USDC {"\u2192"} G1-ALPHA &middot; 0.25 USDC {"\u2192"} MERCHANT-7 &middot; onchain</span></div>
             </div>
           </div>
@@ -329,7 +329,7 @@ export default function ApplicationPage() {
               ["March 8", "Application pack, Onboarding flow", "COMPLETE", "text-accent"],
               ["March 8", "Smart contracts compiled (Foundry)", "COMPLETE", "text-accent"],
               ["March 9", "Contracts deployed to Base Sepolia", "COMPLETE", "text-accent"],
-              ["March 9", "Submit \u2014 Base Batches 003 Robotics Track", "TODAY", "text-yellow-400"],
+              ["March 9", "Submit \u2014 Base Batches 003 Robotics Track", "TODAY", "text-amber"],
             ].map(([date, milestone, status, color], i) => (
               <div key={i} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
                 <div className="flex items-center gap-4">

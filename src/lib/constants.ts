@@ -24,19 +24,19 @@ export function jobStatusColor(status: JobStatus): string {
   switch (status) {
     case "open":
     case "matching":
-      return "text-yellow-400 bg-yellow-400/10";
+      return "text-amber bg-amber/10";
     case "assigned":
     case "escrow_locked":
     case "executing":
-      return "text-blue-400 bg-blue-400/10";
+      return "text-teal bg-teal/10";
     case "proof_submitted":
     case "verifying":
-      return "text-purple-400 bg-purple-400/10";
+      return "text-slate bg-slate/10";
     case "completed":
       return "text-accent bg-accent/10";
     case "failed":
     case "cancelled":
-      return "text-red-400 bg-red-400/10";
+      return "text-alert bg-alert/10";
   }
 }
 
@@ -58,10 +58,10 @@ export function jobStatusLabel(status: JobStatus): string {
 export function robotStatusColor(status: RobotStatus): string {
   switch (status) {
     case "active": return "bg-accent";
-    case "idle": return "bg-blue-400";
-    case "charging": return "bg-yellow-400";
+    case "idle": return "bg-teal";
+    case "charging": return "bg-amber";
     case "maintenance": return "bg-text-tertiary";
-    case "paused": return "bg-red-400";
+    case "paused": return "bg-alert";
   }
 }
 

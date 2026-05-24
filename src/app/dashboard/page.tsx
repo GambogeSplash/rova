@@ -40,15 +40,15 @@ function formatTime(iso: string): string {
 }
 
 function batteryColor(level: number): string {
-  if (level > 50) return "bg-green-500";
-  if (level > 20) return "bg-yellow-400";
-  return "bg-red-400";
+  if (level > 50) return "bg-forest";
+  if (level > 20) return "bg-amber";
+  return "bg-alert";
 }
 
 function batteryTextColor(level: number): string {
-  if (level > 50) return "text-green-500";
-  if (level > 20) return "text-yellow-400";
-  return "text-red-400";
+  if (level > 50) return "text-forest";
+  if (level > 20) return "text-amber";
+  return "text-alert";
 }
 
 type OperatorTab =
@@ -197,7 +197,7 @@ function OverviewTab({
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2 w-2 rounded-full ${
-                        isPaused ? "bg-red-400" : robotStatusColor(robot.status)
+                        isPaused ? "bg-alert" : robotStatusColor(robot.status)
                       } ${
                         robot.status === "active" && !isPaused
                           ? "animate-pulse"
@@ -252,7 +252,7 @@ function OverviewTab({
                     Current Job
                   </span>
                   {currentJob ? (
-                    <span className="font-mono text-[11px] text-blue-400">
+                    <span className="font-mono text-[11px] text-teal">
                       {currentJob.id}
                     </span>
                   ) : (
@@ -289,7 +289,7 @@ function OverviewTab({
                     className={`font-mono text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
                       isPaused
                         ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
-                        : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                        : "border-yellow-400/20 bg-amber/10 text-amber hover:bg-amber/20"
                     }`}
                   >
                     {isPaused ? "Resume" : "Pause"}
@@ -316,7 +316,7 @@ function OverviewTab({
                 <span className="font-mono text-[10px] text-text-tertiary">
                   {formatTime(s.timestamp)}
                 </span>
-                <span className="font-mono text-[11px] text-blue-400">
+                <span className="font-mono text-[11px] text-teal">
                   {s.provider}
                 </span>
                 <span className="font-mono text-[9px] text-text-tertiary">
@@ -379,7 +379,7 @@ function FleetTab({
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
                     isPaused
-                      ? "bg-red-400"
+                      ? "bg-alert"
                       : robotStatusColor(robot.status)
                   } ${
                     robot.status === "active" && !isPaused
@@ -540,7 +540,7 @@ function FleetTab({
                         className={`font-mono text-[11px] px-4 py-2 rounded-lg border transition-colors ${
                           isPaused
                             ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
-                            : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                            : "border-yellow-400/20 bg-amber/10 text-amber hover:bg-amber/20"
                         }`}
                       >
                         {isPaused ? "Resume" : "Pause"}
@@ -630,7 +630,7 @@ function JobsTab({
               onClick={() => setTaskFilter("all")}
               className={`font-mono text-[10px] px-2.5 py-1.5 rounded-lg border transition-colors ${
                 taskFilter === "all"
-                  ? "border-blue-400/20 bg-blue-400/10 text-blue-400"
+                  ? "border-blue-400/20 bg-teal/10 text-teal"
                   : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
               }`}
             >
@@ -642,7 +642,7 @@ function JobsTab({
                 onClick={() => setTaskFilter(t)}
                 className={`font-mono text-[10px] px-2.5 py-1.5 rounded-lg border transition-colors ${
                   taskFilter === t
-                    ? "border-blue-400/20 bg-blue-400/10 text-blue-400"
+                    ? "border-blue-400/20 bg-teal/10 text-teal"
                     : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
                 }`}
               >
@@ -709,7 +709,7 @@ function JobsTab({
                   <span className="font-mono text-[10px] text-accent self-center truncate">
                     {job.client}
                   </span>
-                  <span className="font-mono text-[10px] text-blue-400 self-center">
+                  <span className="font-mono text-[10px] text-teal self-center">
                     {job.robotName ?? "\u2014"}
                   </span>
                   <span className="font-mono text-[9px] text-text-tertiary self-center truncate">
@@ -1024,7 +1024,7 @@ function EarningsTab({
                   <div className="font-mono text-[11px] text-text-primary">
                     <span className="text-accent">{s.client}</span>
                     <span className="text-text-tertiary mx-1">{"\u2192"}</span>
-                    <span className="text-blue-400">{s.provider}</span>
+                    <span className="text-teal">{s.provider}</span>
                   </div>
                   <div className="font-mono text-[9px] text-text-tertiary">
                     {s.jobId} &middot; {s.txHash} &middot; {s.chain}
@@ -1357,7 +1357,7 @@ function PoliciesTab({ policy }: { policy: FleetPolicy }) {
           onClick={handleSave}
           className={`w-full rounded-lg px-4 py-2.5 font-mono text-[12px] font-semibold transition-colors ${
             saved
-              ? "bg-green-500/10 border border-green-500/20 text-green-400"
+              ? "bg-forest/10 border border-green-500/20 text-forest"
               : "bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20"
           }`}
         >
@@ -1520,11 +1520,11 @@ function EmergencyTab({
   const severityColor = (s: string) => {
     switch (s) {
       case "critical":
-        return "text-red-400 bg-red-400/10";
+        return "text-alert bg-alert/10";
       case "warning":
-        return "text-yellow-400 bg-yellow-400/10";
+        return "text-amber bg-amber/10";
       default:
-        return "text-blue-400 bg-blue-400/10";
+        return "text-teal bg-teal/10";
     }
   };
 
@@ -1545,7 +1545,7 @@ function EmergencyTab({
           Fleet Status:{" "}
           <span
             className={`font-semibold ${
-              fleetPaused ? "text-red-400" : "text-green-400"
+              fleetPaused ? "text-alert" : "text-forest"
             }`}
           >
             {fleetPaused ? "PAUSED" : "ACTIVE"}
@@ -1555,8 +1555,8 @@ function EmergencyTab({
           onClick={onToggleFleetPause}
           className={`rounded-xl px-12 py-5 font-mono text-[14px] font-bold transition-all ${
             fleetPaused
-              ? "bg-green-500/10 border-2 border-green-500/30 text-green-400 hover:bg-green-500/20 hover:border-green-500/50"
-              : "bg-red-500/10 border-2 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:border-red-500/50"
+              ? "bg-forest/10 border-2 border-green-500/30 text-forest hover:bg-forest/20 hover:border-green-500/50"
+              : "bg-alert/10 border-2 border-red-500/30 text-alert hover:bg-alert/20 hover:border-red-500/50"
           }`}
         >
           {fleetPaused
@@ -1586,7 +1586,7 @@ function EmergencyTab({
                 <div className="flex items-center gap-3">
                   <span
                     className={`h-2 w-2 rounded-full ${
-                      isPaused ? "bg-red-400" : robotStatusColor(robot.status)
+                      isPaused ? "bg-alert" : robotStatusColor(robot.status)
                     }`}
                   />
                   <span className="font-mono text-[12px] font-semibold text-text-primary">
@@ -1599,7 +1599,7 @@ function EmergencyTab({
                 <div className="flex items-center gap-3">
                   <span
                     className={`font-mono text-[10px] ${
-                      isPaused ? "text-red-400" : "text-green-400"
+                      isPaused ? "text-alert" : "text-forest"
                     }`}
                   >
                     {isPaused ? "PAUSED" : "RUNNING"}
@@ -1612,7 +1612,7 @@ function EmergencyTab({
                         ? "border-border bg-surface-1 text-text-tertiary cursor-not-allowed opacity-40"
                         : isPaused
                         ? "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20"
-                        : "border-yellow-400/20 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                        : "border-yellow-400/20 bg-amber/10 text-amber hover:bg-amber/20"
                     }`}
                   >
                     {isPaused ? "Resume" : "Pause"}
@@ -1643,7 +1643,7 @@ function EmergencyTab({
             disabled={!alertMessage.trim()}
             className={`rounded-lg px-5 py-2.5 font-mono text-[11px] font-semibold border transition-colors ${
               alertSent
-                ? "border-green-500/20 bg-green-500/10 text-green-400"
+                ? "border-green-500/20 bg-forest/10 text-forest"
                 : "border-accent/20 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-30 disabled:cursor-not-allowed"
             }`}
           >

@@ -1,25 +1,29 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter_Tight, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import CmdK from "@/components/CmdK";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const interTight = Inter_Tight({
+  variable: "--font-inter-tight",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "ROVA — ACP-Native Task Marketplace for Physical Robots",
+  title: "ROVA — Settlement layer for robots that earn",
   description:
-    "The first ACP-native registry that lets Virtuals agents hire physical robots. Same protocol, same escrow, same verification, extended to the physical world.",
+    "ACP-native task marketplace where Virtuals agents hire physical robots and payment settles automatically onchain on Base.",
   openGraph: {
-    title: "ROVA — Hire Physical Robots Onchain",
+    title: "ROVA — Settlement layer for robots that earn",
     description:
-      "ACP-native marketplace where Virtuals agents post physical tasks, robots execute them, and payment settles automatically onchain.",
+      "Job posted → robot accepts → proof verified → escrow released. Built on ACP v2 + ERC-4337.",
     type: "website",
   },
 };
@@ -30,11 +34,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${interTight.variable} ${plexMono.variable} antialiased bg-paper text-ink`}
       >
         {children}
+        <CmdK />
       </body>
     </html>
   );
