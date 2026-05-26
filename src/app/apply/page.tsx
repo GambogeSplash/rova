@@ -1,401 +1,1102 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { RovaMark, OperatorIcon, AgentIcon, RobotIcon, ArrowRightIcon, CheckIcon } from "@/components/Icons";
+import { Eyebrow, AmberLink } from "@/components/Primitives";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.05, duration: 0.5 },
-  }),
+type Track = "operator" | "agent" | "partner";
+type Phase = "select" | "form" | "done";
+
+const CAL_URL = "https://cal.com/rova/pilot";
+
+const ease = [0.2, 0, 0, 1] as const;
+
+interface OperatorForm {
+  org: string;
+  role: string;
+  fleetSize: string;
+  locations: string;
+  robotMakes: string;
+  currentAutomation: string;
+  firstShip: string;
+  budget: string;
+  email: string;
+  handle: string;
+}
+
+interface AgentForm {
+  company: string;
+  framework: string;
+  workType: string;
+  monthlyBudget: string;
+  jobVolume: string;
+  timeline: string;
+  email: string;
+  handle: string;
+  sdkHelp: "yes" | "no" | "";
+}
+
+interface PartnerForm {
+  company: string;
+  role: string;
+  productLine: string;
+  deployments: string;
+  geographies: string;
+  unitsInField: string;
+  unlock: string;
+  email: string;
+  readyForPilot: "yes" | "no" | "";
+}
+
+const EMPTY_OPERATOR: OperatorForm = {
+  org: "",
+  role: "",
+  fleetSize: "",
+  locations: "",
+  robotMakes: "",
+  currentAutomation: "",
+  firstShip: "",
+  budget: "",
+  email: "",
+  handle: "",
 };
 
-// ─── Section Components ──────────────────────────────────────────────
-function Section({
-  id,
-  number,
+const EMPTY_AGENT: AgentForm = {
+  company: "",
+  framework: "",
+  workType: "",
+  monthlyBudget: "",
+  jobVolume: "",
+  timeline: "",
+  email: "",
+  handle: "",
+  sdkHelp: "",
+};
+
+const EMPTY_PARTNER: PartnerForm = {
+  company: "",
+  role: "",
+  productLine: "",
+  deployments: "",
+  geographies: "",
+  unitsInField: "",
+  unlock: "",
+  email: "",
+  readyForPilot: "",
+};
+
+const FLEET_SIZES = ["1-5", "6-20", "21-50", "50+"];
+const FRAMEWORKS = ["Virtuals", "CrewAI", "Eliza", "Custom"];
+const BUDGETS = ["< $1k", "$1k – $5k", "$5k – $20k", "$20k+"];
+const TIMELINES = ["This month", "Next 60 days", "Q3+", "Exploring"];
+
+function TopNav({ phase, onBack }: { phase: Phase; onBack: () => void }) {
+  return (
+    <nav className="sticky top-0 z-50 border-b border-line-soft bg-paper/90 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between px-5 sm:px-8">
+        <div className="flex items-center gap-5">
+          <Link href="/" className="flex items-center gap-2.5">
+            <RovaMark size={18} />
+            <span className="font-sans text-[15px] font-semibold tracking-[-0.01em] text-bean">
+              ROVA
+            </span>
+          </Link>
+          {phase !== "select" && (
+            <button
+              onClick={onBack}
+              className="font-sans text-[13px] text-slate hover:text-bean transition-colors flex items-center gap-1.5"
+            >
+              <span aria-hidden>←</span> Switch track
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-6">
+          <Link href="/simulator" className="font-sans text-[13px] text-bean hover:text-amber transition-colors hidden sm:inline">
+            Simulator
+          </Link>
+          <a
+            href={CAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-sans text-[13px] text-bean hover:text-amber transition-colors"
+          >
+            Book a call
+          </a>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function ProgressDots({ total, current }: { total: number; current: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          className={`h-1 transition-all duration-300 ${
+            i === current
+              ? "w-8 bg-amber"
+              : i < current
+              ? "w-4 bg-bean"
+              : "w-4 bg-line-soft"
+          }`}
+        />
+      ))}
+      <span className="ml-3 font-mono text-[10px] uppercase tracking-[0.16em] text-slate tabular">
+        Step {current + 1} / {total}
+      </span>
+    </div>
+  );
+}
+
+function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div className="mb-2 flex items-baseline justify-between">
+      <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate">
+        {children}
+      </label>
+      {hint && <span className="font-mono text-[10px] text-slate/70">{hint}</span>}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full border border-line-soft bg-paper px-4 py-3 font-sans text-[14px] text-bean placeholder:text-slate/50 focus:border-amber focus:outline-none transition-colors"
+    />
+  );
+}
+
+function TextArea({
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className="w-full resize-none border border-line-soft bg-paper px-4 py-3 font-sans text-[14px] leading-relaxed text-bean placeholder:text-slate/50 focus:border-amber focus:outline-none transition-colors"
+    />
+  );
+}
+
+function OptionRow({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const active = value === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`border px-4 py-2 font-sans text-[13px] transition-colors ${
+              active
+                ? "border-bean bg-bean text-paper"
+                : "border-line-soft bg-paper text-bean hover:border-bean"
+            }`}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function YesNo({ value, onChange }: { value: "yes" | "no" | ""; onChange: (v: "yes" | "no") => void }) {
+  return (
+    <div className="flex gap-2">
+      {(["yes", "no"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`border px-5 py-2 font-sans text-[13px] uppercase tracking-wide transition-colors ${
+            value === v
+              ? "border-bean bg-bean text-paper"
+              : "border-line-soft bg-paper text-bean hover:border-bean"
+          }`}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 bg-amber px-6 py-3 font-sans text-[14px] font-medium text-paper transition-colors hover:bg-amber-pressed disabled:cursor-not-allowed disabled:opacity-40 btn-press"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 border border-line-soft bg-paper px-5 py-3 font-sans text-[13px] text-bean transition-colors hover:border-bean"
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ─── Track Selector ────────────────────────────────────────────── */
+
+const TRACKS: Array<{
+  id: Track;
+  title: string;
+  subtitle: string;
+  ask: string;
+  benefit: string;
+  Icon: typeof OperatorIcon;
+}> = [
+  {
+    id: "operator",
+    title: "Operator",
+    subtitle: "Run a fleet",
+    ask: "You own or operate physical robots and want a second revenue stream from idle hours.",
+    benefit: "Earn USDC for off-shift work. Keep operator control of every job your robots take.",
+    Icon: OperatorIcon,
+  },
+  {
+    id: "agent",
+    title: "Agent",
+    subtitle: "Build on Rova",
+    ask: "You build agents on Virtuals, CrewAI, Eliza or custom stacks and want them to do physical work.",
+    benefit: "Hire physical robots through the same ACP interface you already use for digital agents.",
+    Icon: AgentIcon,
+  },
+  {
+    id: "partner",
+    title: "Robot partner",
+    subtitle: "Manufacturer, integrator",
+    ask: "You make robots, sell SDKs, or integrate hardware for enterprise customers.",
+    benefit: "Get every robot you ship a wallet, an identity, and a marketplace from day one.",
+    Icon: RobotIcon,
+  },
+];
+
+function TrackSelector({ onPick }: { onPick: (t: Track) => void }) {
+  return (
+    <div className="mx-auto max-w-[1100px] px-5 sm:px-8 py-16 sm:py-24">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease }}
+      >
+        <Eyebrow>Pilot · cohort 01 · 2026</Eyebrow>
+        <h1 className="mt-5 font-sans text-[clamp(2.2rem,4.6vw,3.6rem)] leading-[1.05] tracking-[-0.025em] font-semibold text-bean">
+          Apply to run the first
+          <br />
+          ACP pilots on Rova.
+        </h1>
+        <p className="mt-6 max-w-[58ch] font-sans text-[16px] leading-[1.55] text-bean-soft">
+          We review applications weekly. Pick the track that fits and we&apos;ll
+          come back inside 7 days with next steps. The highest-intent path is to
+          book a call directly.
+        </p>
+      </motion.div>
+
+      <div className="mt-14 grid gap-4 md:grid-cols-3">
+        {TRACKS.map((t, i) => {
+          const Icon = t.Icon;
+          return (
+            <motion.button
+              key={t.id}
+              type="button"
+              onClick={() => onPick(t.id)}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease, delay: 0.1 + i * 0.06 }}
+              className="group flex flex-col border border-line-soft bg-cream-soft p-7 text-left transition-colors hover:border-bean focus:outline-none focus:border-bean"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex h-10 w-10 items-center justify-center border border-line-soft bg-paper">
+                  <Icon size={20} />
+                </div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate">
+                  Track 0{TRACKS.indexOf(t) + 1}
+                </span>
+              </div>
+              <h2 className="mt-6 font-sans text-[22px] font-semibold tracking-[-0.01em] text-bean">
+                {t.title}
+              </h2>
+              <span className="mt-1 font-sans text-[13px] text-slate">{t.subtitle}</span>
+              <p className="mt-5 font-sans text-[14px] leading-[1.55] text-bean-soft">
+                {t.ask}
+              </p>
+              <div className="mt-5 border-t border-line-soft pt-5">
+                <p className="font-sans text-[13px] leading-[1.55] text-bean">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber mr-2">Why</span>
+                  {t.benefit}
+                </p>
+              </div>
+              <span className="mt-7 inline-flex items-center gap-1.5 font-sans text-[13px] font-medium text-amber group-hover:text-amber-pressed transition-colors">
+                Apply <ArrowRightIcon size={14} />
+              </span>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      <div className="mt-14 flex flex-col items-start gap-3 border-t border-line-soft pt-8 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-sans text-[14px] text-bean-soft">
+          Already know we should talk? Skip the form.
+        </p>
+        <a
+          href={CAL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 font-sans text-[14px] font-medium text-amber hover:text-amber-pressed link-hover"
+        >
+          Book a 15-min intro call <ArrowRightIcon size={14} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Operator Form ─────────────────────────────────────────────── */
+
+function OperatorTrack({
+  onSubmit,
+}: {
+  onSubmit: (data: OperatorForm) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<OperatorForm>(EMPTY_OPERATOR);
+  const update = <K extends keyof OperatorForm>(k: K, v: OperatorForm[K]) =>
+    setData((d) => ({ ...d, [k]: v }));
+
+  const step1Valid = data.org.trim() && data.role.trim() && data.fleetSize;
+  const step2Valid = data.locations.trim() && data.robotMakes.trim();
+  const step3Valid = data.firstShip.trim() && data.email.trim();
+
+  return (
+    <FormShell
+      track="operator"
+      title="Operator track"
+      subtitle="Three steps. Six minutes."
+      step={step}
+      total={3}
+    >
+      {step === 0 && (
+        <StepShell key="op-0" heading="Tell us about your fleet">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Organization / fleet name</FieldLabel>
+              <TextInput
+                value={data.org}
+                onChange={(v) => update("org", v)}
+                placeholder="e.g. Lagos Logistics Co."
+              />
+            </div>
+            <div>
+              <FieldLabel>Your role</FieldLabel>
+              <TextInput
+                value={data.role}
+                onChange={(v) => update("role", v)}
+                placeholder="Head of Ops, CTO, Founder…"
+              />
+            </div>
+            <div>
+              <FieldLabel>Fleet size today</FieldLabel>
+              <OptionRow
+                options={FLEET_SIZES}
+                value={data.fleetSize}
+                onChange={(v) => update("fleetSize", v)}
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={null}
+            onNext={() => setStep(1)}
+            nextDisabled={!step1Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 1 && (
+        <StepShell key="op-1" heading="Where and what runs today">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Warehouse / site locations</FieldLabel>
+              <TextInput
+                value={data.locations}
+                onChange={(v) => update("locations", v)}
+                placeholder="City, region. Multiple OK."
+              />
+            </div>
+            <div>
+              <FieldLabel>Robot makes & models</FieldLabel>
+              <TextInput
+                value={data.robotMakes}
+                onChange={(v) => update("robotMakes", v)}
+                placeholder="Unitree G1, Spot, Reachy, AMRs…"
+              />
+            </div>
+            <div>
+              <FieldLabel>Current automation stack</FieldLabel>
+              <TextArea
+                value={data.currentAutomation}
+                onChange={(v) => update("currentAutomation", v)}
+                placeholder="WMS, ROS2 deployment, scheduler — whatever fits."
+                rows={3}
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(0)}
+            onNext={() => setStep(2)}
+            nextDisabled={!step2Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 2 && (
+        <StepShell key="op-2" heading="The pilot itself">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>What would you ship in the first 30 days?</FieldLabel>
+              <TextArea
+                value={data.firstShip}
+                onChange={(v) => update("firstShip", v)}
+                placeholder="One concrete job loop. The narrower the better."
+                rows={4}
+              />
+            </div>
+            <div>
+              <FieldLabel>Anchor budget</FieldLabel>
+              <OptionRow
+                options={BUDGETS}
+                value={data.budget}
+                onChange={(v) => update("budget", v)}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <FieldLabel>Contact email</FieldLabel>
+                <TextInput
+                  type="email"
+                  value={data.email}
+                  onChange={(v) => update("email", v)}
+                  placeholder="you@company.com"
+                />
+              </div>
+              <div>
+                <FieldLabel hint="optional">Handle (TG / X / DC)</FieldLabel>
+                <TextInput
+                  value={data.handle}
+                  onChange={(v) => update("handle", v)}
+                  placeholder="@username"
+                />
+              </div>
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(1)}
+            onSubmit={() => onSubmit(data)}
+            submitDisabled={!step3Valid}
+          />
+        </StepShell>
+      )}
+    </FormShell>
+  );
+}
+
+/* ─── Agent Form ────────────────────────────────────────────────── */
+
+function AgentTrack({ onSubmit }: { onSubmit: (data: AgentForm) => void }) {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<AgentForm>(EMPTY_AGENT);
+  const update = <K extends keyof AgentForm>(k: K, v: AgentForm[K]) =>
+    setData((d) => ({ ...d, [k]: v }));
+
+  const step1Valid = data.company.trim() && data.framework;
+  const step2Valid = data.workType.trim() && data.monthlyBudget;
+  const step3Valid = data.timeline && data.email.trim() && data.sdkHelp;
+
+  return (
+    <FormShell
+      track="agent"
+      title="Agent builder track"
+      subtitle="Three steps. Five minutes."
+      step={step}
+      total={3}
+    >
+      {step === 0 && (
+        <StepShell key="ag-0" heading="What you're building">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Company / handle</FieldLabel>
+              <TextInput
+                value={data.company}
+                onChange={(v) => update("company", v)}
+                placeholder="Project name or your handle"
+              />
+            </div>
+            <div>
+              <FieldLabel>Agent framework</FieldLabel>
+              <OptionRow
+                options={FRAMEWORKS}
+                value={data.framework}
+                onChange={(v) => update("framework", v)}
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={null}
+            onNext={() => setStep(1)}
+            nextDisabled={!step1Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 1 && (
+        <StepShell key="ag-1" heading="The physical work">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>What kind of physical work do you need?</FieldLabel>
+              <TextArea
+                value={data.workType}
+                onChange={(v) => update("workType", v)}
+                placeholder="CARRY, NAVIGATE, INSPECT, SORT — describe the loop."
+                rows={4}
+              />
+            </div>
+            <div>
+              <FieldLabel>Monthly budget for physical jobs</FieldLabel>
+              <OptionRow
+                options={BUDGETS}
+                value={data.monthlyBudget}
+                onChange={(v) => update("monthlyBudget", v)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Expected job volume</FieldLabel>
+              <TextInput
+                value={data.jobVolume}
+                onChange={(v) => update("jobVolume", v)}
+                placeholder="e.g. 200 jobs/day at steady state"
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(0)}
+            onNext={() => setStep(2)}
+            nextDisabled={!step2Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 2 && (
+        <StepShell key="ag-2" heading="Timeline and contact">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Integration timeline</FieldLabel>
+              <OptionRow
+                options={TIMELINES}
+                value={data.timeline}
+                onChange={(v) => update("timeline", v)}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <FieldLabel>Contact email</FieldLabel>
+                <TextInput
+                  type="email"
+                  value={data.email}
+                  onChange={(v) => update("email", v)}
+                  placeholder="you@project.xyz"
+                />
+              </div>
+              <div>
+                <FieldLabel hint="optional">Handle (TG / X / DC)</FieldLabel>
+                <TextInput
+                  value={data.handle}
+                  onChange={(v) => update("handle", v)}
+                  placeholder="@username"
+                />
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Do you need SDK help to integrate?</FieldLabel>
+              <YesNo
+                value={data.sdkHelp}
+                onChange={(v) => update("sdkHelp", v)}
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(1)}
+            onSubmit={() => onSubmit(data)}
+            submitDisabled={!step3Valid}
+          />
+        </StepShell>
+      )}
+    </FormShell>
+  );
+}
+
+/* ─── Partner Form ──────────────────────────────────────────────── */
+
+function PartnerTrack({ onSubmit }: { onSubmit: (data: PartnerForm) => void }) {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<PartnerForm>(EMPTY_PARTNER);
+  const update = <K extends keyof PartnerForm>(k: K, v: PartnerForm[K]) =>
+    setData((d) => ({ ...d, [k]: v }));
+
+  const step1Valid = data.company.trim() && data.role.trim() && data.productLine.trim();
+  const step2Valid = data.deployments.trim() && data.geographies.trim() && data.unitsInField.trim();
+  const step3Valid = data.unlock.trim() && data.email.trim() && data.readyForPilot;
+
+  return (
+    <FormShell
+      track="partner"
+      title="Robot partner track"
+      subtitle="Three steps. Five minutes."
+      step={step}
+      total={3}
+    >
+      {step === 0 && (
+        <StepShell key="pa-0" heading="Your company">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Company</FieldLabel>
+              <TextInput
+                value={data.company}
+                onChange={(v) => update("company", v)}
+                placeholder="Manufacturer or integrator name"
+              />
+            </div>
+            <div>
+              <FieldLabel>Your role</FieldLabel>
+              <TextInput
+                value={data.role}
+                onChange={(v) => update("role", v)}
+                placeholder="BD, Product, Founder…"
+              />
+            </div>
+            <div>
+              <FieldLabel>Robot product line</FieldLabel>
+              <TextInput
+                value={data.productLine}
+                onChange={(v) => update("productLine", v)}
+                placeholder="e.g. Quadruped AMR for industrial inspection"
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={null}
+            onNext={() => setStep(1)}
+            nextDisabled={!step1Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 1 && (
+        <StepShell key="pa-1" heading="Where you ship today">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>Live deployments</FieldLabel>
+              <TextArea
+                value={data.deployments}
+                onChange={(v) => update("deployments", v)}
+                placeholder="Named customers or industries are fine."
+                rows={3}
+              />
+            </div>
+            <div>
+              <FieldLabel>Geographies</FieldLabel>
+              <TextInput
+                value={data.geographies}
+                onChange={(v) => update("geographies", v)}
+                placeholder="e.g. US, EU, MENA"
+              />
+            </div>
+            <div>
+              <FieldLabel>Units in field</FieldLabel>
+              <TextInput
+                value={data.unitsInField}
+                onChange={(v) => update("unitsInField", v)}
+                placeholder="Approximate count"
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(0)}
+            onNext={() => setStep(2)}
+            nextDisabled={!step2Valid}
+          />
+        </StepShell>
+      )}
+
+      {step === 2 && (
+        <StepShell key="pa-2" heading="Partnership shape">
+          <div className="space-y-6">
+            <div>
+              <FieldLabel>What would unlock co-marketing for you?</FieldLabel>
+              <TextArea
+                value={data.unlock}
+                onChange={(v) => update("unlock", v)}
+                placeholder="A signed customer case study, a joint demo, an SDK reference…"
+                rows={4}
+              />
+            </div>
+            <div>
+              <FieldLabel>Contact email</FieldLabel>
+              <TextInput
+                type="email"
+                value={data.email}
+                onChange={(v) => update("email", v)}
+                placeholder="bd@company.com"
+              />
+            </div>
+            <div>
+              <FieldLabel>Ready for a joint pilot?</FieldLabel>
+              <YesNo
+                value={data.readyForPilot}
+                onChange={(v) => update("readyForPilot", v)}
+              />
+            </div>
+          </div>
+          <FormFooter
+            onBack={() => setStep(1)}
+            onSubmit={() => onSubmit(data)}
+            submitDisabled={!step3Valid}
+          />
+        </StepShell>
+      )}
+    </FormShell>
+  );
+}
+
+/* ─── Shared form chrome ────────────────────────────────────────── */
+
+function FormShell({
+  track,
   title,
+  subtitle,
+  step,
+  total,
   children,
 }: {
-  id: string;
-  number: string;
+  track: Track;
   title: string;
+  subtitle: string;
+  step: number;
+  total: number;
+  children: React.ReactNode;
+}) {
+  const TrackIcon =
+    track === "operator" ? OperatorIcon : track === "agent" ? AgentIcon : RobotIcon;
+  return (
+    <div className="mx-auto max-w-[720px] px-5 sm:px-8 py-12 sm:py-16">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease }}
+        className="flex items-start justify-between gap-6 border-b border-line-soft pb-6"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center border border-line-soft bg-cream-soft">
+            <TrackIcon size={20} />
+          </div>
+          <div>
+            <Eyebrow tone="amber">{title}</Eyebrow>
+            <p className="mt-2 font-sans text-[14px] text-bean-soft">{subtitle}</p>
+          </div>
+        </div>
+        <ProgressDots total={total} current={step} />
+      </motion.div>
+
+      <div className="mt-10">
+        <AnimatePresence mode="wait">{children}</AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function StepShell({
+  heading,
+  children,
+}: {
+  heading: string;
   children: React.ReactNode;
 }) {
   return (
-    <motion.section
-      id={id}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, margin: "-40px" }}
-      variants={fadeUp}
-      custom={0}
-      className="border-b border-border py-12"
+    <motion.div
+      initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
+      transition={{ duration: 0.32, ease }}
     >
-      <div className="flex items-baseline gap-4 mb-6">
-        <span className="font-mono text-[10px] text-accent/50">{number}</span>
-        <h2 className="text-xl font-semibold text-text-primary">{title}</h2>
-      </div>
-      {children}
-    </motion.section>
+      <h2 className="font-sans text-[26px] leading-[1.15] tracking-[-0.02em] font-semibold text-bean">
+        {heading}
+      </h2>
+      <div className="mt-8">{children}</div>
+    </motion.div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function FormFooter({
+  onBack,
+  onNext,
+  onSubmit,
+  nextDisabled,
+  submitDisabled,
+}: {
+  onBack: (() => void) | null;
+  onNext?: () => void;
+  onSubmit?: () => void;
+  nextDisabled?: boolean;
+  submitDisabled?: boolean;
+}) {
   return (
-    <div className="mb-5">
-      <div className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider mb-1.5">{label}</div>
-      <div className="text-sm text-text-secondary leading-relaxed">{children}</div>
+    <div className="mt-10 flex items-center justify-between border-t border-line-soft pt-6">
+      <div>
+        {onBack && (
+          <SecondaryButton onClick={onBack}>
+            <span aria-hidden>←</span> Back
+          </SecondaryButton>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        {onSubmit ? (
+          <PrimaryButton onClick={onSubmit} disabled={submitDisabled}>
+            Submit application <ArrowRightIcon size={14} />
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton onClick={onNext} disabled={nextDisabled}>
+            Continue <ArrowRightIcon size={14} />
+          </PrimaryButton>
+        )}
+      </div>
     </div>
   );
 }
 
-function BulletList({ items }: { items: string[] }) {
-  return (
-    <ul className="space-y-1.5">
-      {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-2 text-sm text-text-secondary leading-relaxed">
-          <span className="text-accent mt-1.5 text-[6px]">{"\u25CF"}</span>
-          {item}
-        </li>
-      ))}
-    </ul>
-  );
-}
+/* ─── Done screen ───────────────────────────────────────────────── */
 
-function TableRow({ cells, header }: { cells: string[]; header?: boolean }) {
+function DoneScreen({ track, onReset }: { track: Track; onReset: () => void }) {
+  const label =
+    track === "operator"
+      ? "operator"
+      : track === "agent"
+      ? "agent builder"
+      : "robot partner";
   return (
-    <div className={`grid grid-cols-${cells.length} gap-4 px-4 py-2.5 ${header ? "border-b border-border bg-surface-2" : "border-b border-border last:border-0"}`}>
-      {cells.map((cell, i) => (
-        <span key={i} className={`font-mono text-[11px] ${header ? "text-text-tertiary uppercase tracking-wider text-[10px]" : i === 0 ? "text-text-primary" : i === 1 ? "text-accent" : "text-text-secondary"}`}>
-          {cell}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ─── Main Application Page ───────────────────────────────────────────
-export default function ApplicationPage() {
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Top bar */}
-      <div className="border-b border-border bg-surface-0">
-        <div className="mx-auto flex h-12 max-w-3xl items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/10 border border-accent/20">
-                <div className="h-1.5 w-1.5 rounded-full bg-accent" />
-              </div>
-              <span className="text-[14px] font-semibold text-text-primary">ROVA</span>
-            </Link>
-            <span className="text-text-tertiary">/</span>
-            <span className="text-[13px] text-text-secondary">Base Batches 003 Application</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href="/simulator" className="text-[13px] text-text-tertiary hover:text-text-primary transition-colors">
-              Simulator
-            </Link>
-            <Link href="/dashboard" className="text-[13px] text-text-tertiary hover:text-text-primary transition-colors">
-              Dashboard
-            </Link>
-          </div>
-        </div>
+    <motion.div
+      initial={{ opacity: 0, y: 16, filter: "blur(4px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.45, ease }}
+      className="mx-auto max-w-[640px] px-5 sm:px-8 py-20 sm:py-28 text-center"
+    >
+      <div className="mx-auto flex h-14 w-14 items-center justify-center border border-forest bg-paper">
+        <CheckIcon size={22} />
       </div>
+      <Eyebrow tone="amber" className="mt-8 justify-center">
+        Application received
+      </Eyebrow>
+      <h1 className="mt-5 font-sans text-[clamp(2rem,4vw,3rem)] leading-[1.08] tracking-[-0.02em] font-semibold text-bean">
+        Got it. We&apos;ll be back inside 7 days.
+      </h1>
+      <p className="mt-6 font-sans text-[16px] leading-[1.55] text-bean-soft">
+        Your {label} application is in. We review every Friday and reach out
+        with next steps. If you&apos;d rather move faster — book a call.
+      </p>
 
-      {/* Content */}
-      <div className="mx-auto max-w-3xl px-6 py-12">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+      <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a
+          href={CAL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-amber px-6 py-3 font-sans text-[14px] font-medium text-paper transition-colors hover:bg-amber-pressed btn-press"
         >
-          <div className="flex items-center gap-4 mb-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 border border-accent/20">
-              <div className="h-3 w-3 rounded-full bg-accent" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-text-primary">ROVA Protocol</h1>
-              <p className="text-[13px] text-text-tertiary">Application for Base Batches 003 — Embodied AI Track</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-xl border border-accent/20 bg-accent/[0.03] px-5 py-4">
-            <p className="text-sm text-text-secondary leading-relaxed italic">
-              &ldquo;ROVA is the first ACP-native registry that lets Virtuals agents hire physical robots &mdash; same protocol, same escrow, same verification, extended to the physical world.&rdquo;
-            </p>
-          </div>
-        </motion.div>
-
-        {/* ── 01 Project Overview ─────────────────────────────────── */}
-        <Section id="overview" number="01" title="Project Overview">
-          <Field label="Project Name">ROVA &mdash; ACP-Native Task Marketplace for Physical Robots</Field>
-          <Field label="One-Line Description">
-            An onchain marketplace where Virtuals agents post physical tasks, robots execute them, and payment settles automatically through ACP escrow on Base.
-          </Field>
-          <Field label="Category">Embodied AI / DePIN / Agent Infrastructure</Field>
-          <Field label="Status">Pre-launch &mdash; Simulator, Dashboard, and Landing Page built. Smart contracts in development for Base Sepolia deployment.</Field>
-        </Section>
-
-        {/* ── 02 Problem ──────────────────────────────────────────── */}
-        <Section id="problem" number="02" title="The Problem">
-          <Field label="Problem Statement">
-            Virtuals agents can hire other digital agents through ACP. They cannot hire a physical robot. There is no bridge between the onchain agent economy and the physical world.
-          </Field>
-          <Field label="Why This Matters">
-            <BulletList items={[
-              "The Virtuals aGDP is entirely digital \u2014 no physical output, no real-world value creation.",
-              "Robots exist that could do useful physical work (warehouse ops, delivery, inspection) but have no way to participate in the onchain economy.",
-              "No protocol exists to coordinate agent-to-robot workflows with identity, permissions, and automatic payment settlement.",
-              "Virtuals explicitly identifies this gap: \"coordination, identity, permissions, and payments that let robotic systems scale beyond closed deployments.\"",
-            ]} />
-          </Field>
-        </Section>
-
-        {/* ── 03 Solution ─────────────────────────────────────────── */}
-        <Section id="solution" number="03" title="The Solution">
-          <Field label="What ROVA Does">
-            ROVA extends ACP into the physical world. Robots register as ACP Providers. Agents interact with them as ACP Clients. Physical delivery is verified by an onchain Evaluator. Escrow releases automatically on proof of completion.
-          </Field>
-          <Field label="Core Interaction">
-            <div className="rounded-xl border border-border bg-surface-0 p-4 font-mono text-xs leading-relaxed space-y-1">
-              <div><span className="text-text-tertiary">1.</span> <span className="text-accent">Agent</span> browses ROVA registry</div>
-              <div><span className="text-text-tertiary">2.</span> <span className="text-accent">Agent</span> selects robot&apos;s Job Offering (e.g. CARRY at 1.75 USDC)</div>
-              <div><span className="text-text-tertiary">3.</span> <span className="text-amber">Escrow</span> locks bounty onchain</div>
-              <div><span className="text-text-tertiary">4.</span> <span className="text-teal">Robot</span> receives job via ROVA SDK</div>
-              <div><span className="text-text-tertiary">5.</span> <span className="text-teal">Robot</span> executes physical task</div>
-              <div><span className="text-text-tertiary">6.</span> <span className="text-slate">Verifier</span> confirms completion (GPS + timestamp proof)</div>
-              <div><span className="text-text-tertiary">7.</span> <span className="text-accent">Escrow</span> releases to robot wallet</div>
-            </div>
-          </Field>
-          <Field label="Key Differentiator">
-            From an agent&apos;s perspective, hiring a robot through ROVA looks identical to hiring a digital agent through ACP &mdash; same interface, same payment flow. Physical execution is fully abstracted.
-          </Field>
-        </Section>
-
-        {/* ── 04 ACP Alignment ────────────────────────────────────── */}
-        <Section id="acp" number="04" title="ACP v2 Alignment">
-          <Field label="Protocol Mapping">
-            <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
-              <div className="grid grid-cols-3 gap-4 px-4 py-2.5 border-b border-border bg-surface-2">
-                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">ACP Concept</span>
-                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">ROVA Implementation</span>
-                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Example</span>
-              </div>
-              {[
-                ["Client (Buyer)", "Virtuals Agent", "MERCHANT-7"],
-                ["Provider (Seller)", "Physical Robot", "G1-ALPHA"],
-                ["Job Offering", "Robot Capability", "CARRY, NAVIGATE, INSPECT"],
-                ["Job", "Onchain Task Contract", "Rack B3 \u2192 Bay 2"],
-                ["Evaluator", "ROVAVerifier.sol", "GPS + timestamp proof"],
-                ["Escrow", "ROVAMarket.sol", "Bounty held until verified"],
-                ["Deliverable", "Completion Proof", "Sensor hash + coords"],
-              ].map((row, i) => (
-                <div key={i} className="grid grid-cols-3 gap-4 px-4 py-2.5 border-b border-border last:border-0">
-                  <span className="font-mono text-[11px] text-text-primary">{row[0]}</span>
-                  <span className="font-mono text-[11px] text-accent">{row[1]}</span>
-                  <span className="font-mono text-[11px] text-text-tertiary">{row[2]}</span>
-                </div>
-              ))}
-            </div>
-          </Field>
-        </Section>
-
-        {/* ── 05 Architecture ─────────────────────────────────────── */}
-        <Section id="architecture" number="05" title="Smart Contract Architecture">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              {
-                name: "ROVARegistry.sol",
-                purpose: "Identity & Discovery",
-                desc: "Robots register capabilities and publish Job Offerings. Stake ROVA tokens to list \u2014 slashed on failed delivery or SLA breach.",
-              },
-              {
-                name: "ROVAMarket.sol",
-                purpose: "Task Lifecycle & Escrow",
-                desc: "ACP-compatible endpoint for task posting and job management. Holds bounty, releases on verified completion, returns on failure. ERC-4337 compatible.",
-              },
-              {
-                name: "ROVAWallet.sol",
-                purpose: "Robot Payments",
-                desc: "ERC-4337 smart wallet for each robot. Programmable withdrawal rules set by fleet operator. Emergency pause capability.",
-              },
-              {
-                name: "ROVAVerifier.sol",
-                purpose: "Completion Verification",
-                desc: "Validates robot proof of delivery \u2014 GPS at destination, timestamp within SLA, optional sensor hash. Triggers escrow release or penalty.",
-              },
-            ].map((c) => (
-              <div key={c.name} className="rounded-xl border border-border bg-surface-0 p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-xs font-bold text-accent">{c.name}</span>
-                  <span className="text-[10px] text-text-tertiary">{c.purpose}</span>
-                </div>
-                <p className="text-[12px] text-text-secondary leading-relaxed">{c.desc}</p>
-              </div>
-            ))}
-          </div>
-          <Field label="Deployment Target">Base Sepolia (testnet) &mdash; targeting mainnet deployment post-Batches.</Field>
-        </Section>
-
-        {/* ── 06 Demo Scenario ────────────────────────────────────── */}
-        <Section id="demo" number="06" title="Demo Scenario">
-          <Field label="Scenario">
-            A Virtuals commerce agent called MERCHANT-7 has sold a product. It needs the item physically retrieved from Rack B3 and delivered to Dispatch Bay 2.
-          </Field>
-          <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
-            <div className="border-b border-border px-5 py-3 bg-surface-2">
-              <span className="font-mono text-[10px] text-text-tertiary">LIVE DEMO FLOW</span>
-            </div>
-            <div className="p-5 font-mono text-xs space-y-2">
-              <div><span className="text-accent font-semibold">[MERCHANT-7]</span> <span className="text-text-secondary">POST CARRY &middot; Rack B3 {"\u2192"} Dispatch Bay 2 &middot; 2.00 USDC &middot; SLA 5min</span></div>
-              <div><span className="text-text-tertiary font-semibold">[REGISTRY]</span> <span className="text-text-secondary">3 robots available: G1-ALPHA (1.75, 2min, 4.9) &middot; G1-BETA (1.90, 3min, 4.7) &middot; G1-DELTA (1.80, 2.5min, 4.8)</span></div>
-              <div><span className="text-accent font-semibold">[MERCHANT-7]</span> <span className="text-text-secondary">SELECT G1-ALPHA &middot; best price + highest rep</span></div>
-              <div><span className="text-amber font-semibold">[ESCROW]</span> <span className="text-text-secondary">1.75 USDC locked &middot; tx 0x3f8a...c2d1</span></div>
-              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Rack B3... arrived &middot; picking up... secured</span></div>
-              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">Navigating {"\u2192"} Dispatch Bay 2... arrived &middot; delivering... complete</span></div>
-              <div><span className="text-teal font-semibold">[G1-ALPHA]</span> <span className="text-text-secondary">SUBMIT proof &middot; GPS (52.41, -1.51) &middot; time 3m12s &middot; hash 0x9e2b...f4a7</span></div>
-              <div><span className="text-slate font-semibold">[VERIFIER]</span> <span className="text-text-secondary">GPS confirmed &middot; SLA met (3m12s / 5m00s) &middot; proof valid</span></div>
-              <div><span className="text-accent font-semibold">[SETTLED]</span> <span className="text-text-secondary">1.75 USDC {"\u2192"} G1-ALPHA &middot; 0.25 USDC {"\u2192"} MERCHANT-7 &middot; onchain</span></div>
-            </div>
-          </div>
-          <div className="mt-4 flex gap-3">
-            <Link
-              href="/simulator"
-              className="rounded-lg bg-accent/10 px-4 py-2 text-[13px] font-medium text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-            >
-              View Interactive Simulator {"\u2192"}
-            </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-lg bg-surface-2 px-4 py-2 text-[13px] font-medium text-text-secondary border border-border hover:border-border-hover transition-colors"
-            >
-              View Fleet Dashboard {"\u2192"}
-            </Link>
-          </div>
-        </Section>
-
-        {/* ── 07 Why This Track ───────────────────────────────────── */}
-        <Section id="fit" number="07" title="Why ROVA Fits This Track">
-          <Field label="Virtuals' Stated Need">
-            &ldquo;Coordination, identity, permissions, and payments that let robotic systems scale beyond closed deployments.&rdquo;
-          </Field>
-          <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
-            {[
-              ["Coordination", "ROVAMarket.sol \u2014 agent-to-robot job matching onchain"],
-              ["Identity", "ROVARegistry.sol \u2014 robots registered with capabilities and reputation"],
-              ["Permissions", "ROVAWallet.sol \u2014 programmable rules, emergency pause"],
-              ["Payments", "ACP escrow \u2014 automatic release on verified completion"],
-              ["Robot-to-agent workflows via ACP", "Native \u2014 robots are Providers, agents are Clients"],
-            ].map(([req, answer], i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
-                <span className="text-[13px] font-semibold text-accent min-w-[200px]">{req}</span>
-                <span className="text-[12px] text-text-secondary">{answer}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 rounded-xl border border-accent/10 bg-accent/[0.02] px-5 py-3">
-            <p className="text-sm text-text-secondary">
-              ROVA is not adjacent to what Virtuals is building. It is a direct extension of ACP into the physical world &mdash; the missing coordination layer between embodied AI and the Virtuals ecosystem.
-            </p>
-          </div>
-        </Section>
-
-        {/* ── 08 Token ────────────────────────────────────────────── */}
-        <Section id="token" number="08" title="ROVA Token">
-          <Field label="Token Utility">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                { fn: "Registry Staking", desc: "Robots stake ROVA to publish Job Offerings. Higher stake = higher trust = more wins. Slashed on failure." },
-                { fn: "Governance", desc: "Protocol parameters \u2014 slashing %, SLA thresholds, fee rates \u2014 decided by ROVA holders." },
-                { fn: "Fee Capture", desc: "0.1\u20130.3% of every settled task fee buys ROVA from market and distributes to stakers. Real yield from physical work." },
-              ].map((t) => (
-                <div key={t.fn} className="rounded-xl border border-border bg-surface-0 p-4">
-                  <div className="text-[13px] font-semibold text-accent mb-2">{t.fn}</div>
-                  <p className="text-[11px] text-text-secondary leading-relaxed">{t.desc}</p>
-                </div>
-              ))}
-            </div>
-          </Field>
-        </Section>
-
-        {/* ── 09 Roadmap ──────────────────────────────────────────── */}
-        <Section id="roadmap" number="09" title="Roadmap & Milestones">
-          <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
-            {[
-              ["March 7", "Simulator, Dashboard, Landing page", "COMPLETE", "text-accent"],
-              ["March 8", "Application pack, Onboarding flow", "COMPLETE", "text-accent"],
-              ["March 8", "Smart contracts compiled (Foundry)", "COMPLETE", "text-accent"],
-              ["March 9", "Contracts deployed to Base Sepolia", "COMPLETE", "text-accent"],
-              ["March 9", "Submit \u2014 Base Batches 003 Robotics Track", "TODAY", "text-amber"],
-            ].map(([date, milestone, status, color], i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3 border-b border-border last:border-0">
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-[11px] text-text-tertiary min-w-[70px]">{date}</span>
-                  <span className="text-[13px] text-text-primary">{milestone}</span>
-                </div>
-                <span className={`font-mono text-[9px] font-semibold ${color}`}>{status}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        {/* ── 10 Team ─────────────────────────────────────────────── */}
-        <Section id="team" number="10" title="Team">
-          <Field label="Structure">Solo builder</Field>
-          <Field label="Builder">
-            <span className="text-accent font-semibold">GambogeSplash</span> — Full-stack engineer + smart contract developer
-          </Field>
-          <Field label="Background">
-            Experience in prediction markets (Pythia), DeFi, and frontend engineering
-          </Field>
-          <Field label="GitHub">
-            <a href="https://github.com/GambogeSplash" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-              github.com/GambogeSplash
-            </a>
-          </Field>
-          <Field label="Note">
-            Seeking co-founders with robotics/hardware experience through Base Batches
-          </Field>
-        </Section>
-
-        {/* ── 11 Links ────────────────────────────────────────────── */}
-        <Section id="links" number="11" title="Links & Resources">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[
-              { label: "Landing Page", href: "/", desc: "rova.xyz \u2014 Protocol overview and waitlist" },
-              { label: "Interactive Simulator", href: "/simulator", desc: "Live ACP job flow demo" },
-              { label: "Fleet Dashboard", href: "/dashboard", desc: "Robot fleet management interface" },
-              { label: "Interactive Demo", href: "/onboard", desc: "Guided onboarding experience" },
-              { label: "GitHub", href: "https://github.com/GambogeSplash/rova", desc: "github.com/GambogeSplash/rova" },
-            ].map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className="rounded-xl border border-border bg-surface-0 p-4 hover:border-border-hover transition-colors block"
-              >
-                <div className="text-[13px] font-semibold text-accent mb-1">{link.label}</div>
-                <div className="text-[12px] text-text-tertiary">{link.desc}</div>
-              </Link>
-            ))}
-          </div>
-        </Section>
-
-        {/* Footer */}
-        <div className="py-12 text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/10 border border-accent/20">
-              <div className="h-1 w-1 rounded-full bg-accent" />
-            </div>
-            <span className="text-[13px] text-text-tertiary">ROVA Protocol</span>
-          </div>
-          <p className="text-[13px] text-text-tertiary">
-            Building on Base &middot; ACP v2 &middot; Embodied AI Track
-          </p>
-        </div>
+          Book a call now <ArrowRightIcon size={14} />
+        </a>
+        <SecondaryButton onClick={onReset}>Submit another track</SecondaryButton>
       </div>
+
+      <div className="mt-14 border-t border-line-soft pt-8">
+        <p className="font-sans text-[13px] text-slate">
+          In the meantime —{" "}
+          <AmberLink href="/simulator">see the protocol live</AmberLink>{" "}
+          or{" "}
+          <AmberLink href="/onboard">walk the onboarding flow</AmberLink>.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Root ──────────────────────────────────────────────────────── */
+
+export default function ApplyPage() {
+  const [phase, setPhase] = useState<Phase>("select");
+  const [track, setTrack] = useState<Track | null>(null);
+
+  const handlePick = (t: Track) => {
+    setTrack(t);
+    setPhase("form");
+    if (typeof window !== "undefined") {
+      console.log("[rova.apply] track_selected", { track: t });
+    }
+  };
+
+  const handleSubmit = (
+    data: OperatorForm | AgentForm | PartnerForm,
+    t: Track
+  ) => {
+    if (typeof window !== "undefined") {
+      console.log("[rova.apply] submitted", { track: t, data });
+    }
+    setPhase("done");
+  };
+
+  const handleBack = () => {
+    setPhase("select");
+    setTrack(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-paper">
+      <TopNav phase={phase} onBack={handleBack} />
+
+      <AnimatePresence mode="wait">
+        {phase === "select" && (
+          <motion.div
+            key="select"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <TrackSelector onPick={handlePick} />
+          </motion.div>
+        )}
+
+        {phase === "form" && track === "operator" && (
+          <motion.div
+            key="form-op"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <OperatorTrack onSubmit={(d) => handleSubmit(d, "operator")} />
+          </motion.div>
+        )}
+
+        {phase === "form" && track === "agent" && (
+          <motion.div
+            key="form-ag"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <AgentTrack onSubmit={(d) => handleSubmit(d, "agent")} />
+          </motion.div>
+        )}
+
+        {phase === "form" && track === "partner" && (
+          <motion.div
+            key="form-pa"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <PartnerTrack onSubmit={(d) => handleSubmit(d, "partner")} />
+          </motion.div>
+        )}
+
+        {phase === "done" && track && (
+          <motion.div
+            key="done"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <DoneScreen track={track} onReset={handleBack} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <footer className="border-t border-line-soft py-10">
+        <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-between gap-3 px-5 sm:flex-row sm:px-8">
+          <div className="flex items-center gap-2.5">
+            <RovaMark size={14} />
+            <span className="font-sans text-[12px] text-slate">ROVA Protocol</span>
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate">
+            ACP-native · Base · v0.1
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

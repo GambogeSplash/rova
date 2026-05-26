@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AppShell from "@/components/shell/AppShell";
+import { Dot } from "@/components/Primitives";
 import { useCardGlow } from "@/hooks/useCardGlow";
 import {
   TASK_TYPES,
@@ -20,7 +21,51 @@ import {
   SETTLEMENTS,
   AGENT_WALLET,
 } from "@/lib/mock-data";
-import type { TaskType, JobOffering, Job, JobPhase } from "@/lib/types";
+import type { TaskType, JobOffering, Job } from "@/lib/types";
+
+const OPERATOR_HISTORY: Record<string, number> = {
+  "r1": 0.92,
+  "r2": 0.71,
+  "r3": 0.88,
+  "r4": 0.54,
+  "r6": 0.81,
+};
+
+const JOB_TEMPLATES: {
+  key: string;
+  label: string;
+  hint: string;
+  taskType: TaskType;
+  from: string;
+  to: string;
+  bounty: string;
+  sla: string;
+}[] = [
+  { key: "lagos-restock", label: "Lagos restock", hint: "Rack B3 → Bay 2", taskType: "CARRY", from: "Rack B3", to: "Dispatch Bay 2", bounty: "2.00", sla: "5" },
+  { key: "bulk-sort", label: "Bulk sort", hint: "C1 → A3, 10m", taskType: "SORT", from: "Rack C1", to: "Rack A3", bounty: "2.75", sla: "10" },
+  { key: "inspection", label: "Inspection round", hint: "A2 → Insp.", taskType: "INSPECT", from: "Rack A2", to: "Inspection Point", bounty: "2.25", sla: "8" },
+  { key: "warehouse-hop", label: "Inter-warehouse hop", hint: "Charge → C1", taskType: "NAVIGATE", from: "Charging Station", to: "Rack C1", bounty: "1.40", sla: "8" },
+];
+
+const SPEND_CAPS = {
+  dailyCap: 100,
+  dailyUsed: 86,
+  perJobCap: 5,
+  sessionKeyExpiresAt: "2026-03-08T09:00:00Z",
+  sessionKeyId: "sk_0x42b1…91e7",
+};
+
+function scoreOffering(
+  o: JobOffering,
+  budget: number,
+): { score: number; rep: number; price: number; hist: number } {
+  const rep = Math.min(1, o.robotReputation / 5);
+  const priceRaw = budget > 0 ? 1 - o.priceUsdc / budget : 0.5;
+  const price = Math.max(0, Math.min(1, priceRaw));
+  const hist = OPERATOR_HISTORY[o.robotId] ?? 0.5;
+  const score = 0.4 * rep + 0.3 * price + 0.3 * hist;
+  return { score, rep, price, hist };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -195,11 +240,38 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
   const [bounty, setBounty] = useState(preselected?.priceUsdc?.toString() ?? "");
   const [sla, setSla] = useState(preselected?.slaMinutes?.toString() ?? "");
   const [submitted, setSubmitted] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
+  const [selectedOfferingId, setSelectedOfferingId] = useState<string | null>(preselected?.id ?? null);
 
   const schema = TASK_TYPE_SCHEMAS[taskType];
   const locationKeys = Object.keys(WAREHOUSE_LOCATIONS);
 
   const canSubmit = fromLoc && toLoc && bounty && sla && fromLoc !== toLoc;
+
+  const applyTemplate = (key: string) => {
+    const t = JOB_TEMPLATES.find((x) => x.key === key);
+    if (!t) return;
+    setActiveTemplate(key);
+    setTaskType(t.taskType);
+    setFromLoc(t.from);
+    setToLoc(t.to);
+    setBounty(t.bounty);
+    setSla(t.sla);
+    setSelectedOfferingId(null);
+  };
+
+  const budgetNum = parseFloat(bounty) || 0;
+
+  const scoredOfferings = useMemo(() => {
+    return JOB_OFFERINGS.filter((o) => o.active && o.taskType === taskType)
+      .map((o) => ({ offering: o, ...scoreOffering(o, budgetNum > 0 ? budgetNum : 5) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [taskType, budgetNum]);
+
+  const chosen = selectedOfferingId
+    ? JOB_OFFERINGS.find((o) => o.id === selectedOfferingId) ?? preselected
+    : preselected;
 
   const handleSubmit = () => {
     setSubmitted(true);
@@ -246,7 +318,34 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       {/* Form */}
       <div className="lg:col-span-3 rounded-2xl border border-border bg-surface-1 p-5 space-y-5">
-        <h2 className="font-mono text-[14px] font-semibold text-text-primary">Post a Job</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-mono text-[14px] font-semibold text-text-primary">Post a Job</h2>
+          <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-[0.14em]">Manual fallback</span>
+        </div>
+
+        {/* Templates */}
+        <div className="space-y-2">
+          <label className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Templates</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {JOB_TEMPLATES.map((t) => {
+              const isActive = activeTemplate === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => applyTemplate(t.key)}
+                  className={`text-left rounded-lg border px-3 py-2 transition-all ${
+                    isActive
+                      ? "border-accent/40 bg-accent/[0.06]"
+                      : "border-border bg-surface-0 hover:border-border-hover"
+                  }`}
+                >
+                  <div className={`font-mono text-[11px] ${isActive ? "text-accent" : "text-text-primary"}`}>{t.label}</div>
+                  <div className="font-mono text-[10px] text-text-tertiary mt-0.5">{t.hint}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Task Type */}
         <div className="space-y-2">
@@ -337,18 +436,92 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
           </div>
         </div>
 
+        {/* Bid optimizer */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">
+              Bid optimizer · {taskType}
+            </label>
+            <span className="font-mono text-[10px] text-text-tertiary">
+              40 rep · 30 price · 30 history
+            </span>
+          </div>
+          {scoredOfferings.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface-0 p-4 text-center">
+              <p className="font-mono text-[11px] text-text-tertiary">No matching offerings.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
+              {scoredOfferings.map((row, i) => {
+                const isChosen = selectedOfferingId === row.offering.id || (!selectedOfferingId && preselected?.id === row.offering.id);
+                const scorePct = Math.round(row.score * 100);
+                return (
+                  <button
+                    key={row.offering.id}
+                    onClick={() => {
+                      setSelectedOfferingId(row.offering.id);
+                      setBounty(row.offering.priceUsdc.toFixed(2));
+                      setSla(row.offering.slaMinutes.toString());
+                    }}
+                    className={`w-full grid grid-cols-[auto,1fr,auto] gap-3 items-center px-3 py-2.5 text-left border-b border-border/40 last:border-b-0 transition-all ${
+                      isChosen ? "bg-accent/[0.06]" : "hover:bg-surface-1/60"
+                    }`}
+                  >
+                    <span className={`font-mono text-[10px] w-5 ${i === 0 ? "text-accent" : "text-text-tertiary"}`}>
+                      #{i + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono text-[12px] font-semibold ${isChosen ? "text-accent" : "text-teal"}`}>
+                          {row.offering.robotName}
+                        </span>
+                        <span className="font-mono text-[10px] text-text-tertiary">{row.offering.robotModel}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="font-mono text-[10px] text-text-tertiary">
+                          rep <span className="text-text-secondary">{row.offering.robotReputation.toFixed(2)}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-text-tertiary">
+                          price <span className="text-text-secondary">{row.offering.priceUsdc.toFixed(2)}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-text-tertiary">
+                          hist <span className="text-text-secondary">{(row.hist * 100).toFixed(0)}%</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-text-tertiary">
+                          eta <span className="text-text-secondary">{row.offering.etaMinutes}m</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-mono text-[13px] font-semibold ${isChosen ? "text-accent" : "text-text-primary"}`}>
+                        {scorePct}
+                      </div>
+                      <div className="mt-1 h-[2px] w-16 bg-border overflow-hidden">
+                        <div
+                          className={`h-full ${isChosen ? "bg-accent" : "bg-text-secondary"}`}
+                          style={{ width: `${scorePct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Selected Robot */}
-        {preselected && (
+        {chosen && (
           <div className="space-y-2">
             <label className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Selected Robot</label>
             <div className="rounded-xl border border-teal/20 bg-teal/5 p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="font-mono text-[13px] font-semibold text-teal">{preselected.robotName}</span>
-                <span className="font-mono text-[11px] text-text-tertiary">{preselected.robotModel}</span>
+                <span className="font-mono text-[13px] font-semibold text-teal">{chosen.robotName}</span>
+                <span className="font-mono text-[11px] text-text-tertiary">{chosen.robotModel}</span>
               </div>
               <div className="flex items-center gap-4">
-                <span className="font-mono text-[11px] text-text-secondary">Rep {preselected.robotReputation.toFixed(1)}</span>
-                <span className="font-mono text-[11px] text-accent">{preselected.priceUsdc.toFixed(2)} USDC</span>
+                <span className="font-mono text-[11px] text-text-secondary">Rep {chosen.robotReputation.toFixed(1)}</span>
+                <span className="font-mono text-[11px] text-accent">{chosen.priceUsdc.toFixed(2)} USDC</span>
               </div>
             </div>
           </div>
@@ -381,16 +554,16 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
           <DetailRow label="Network" value="Base Sepolia" />
         </div>
 
-        {preselected && (
+        {chosen && (
           <>
             <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider pt-2">Robot Details</h3>
             <div className="rounded-xl border border-border bg-surface-0 p-4 space-y-0">
-              <DetailRow label="Robot" value={preselected.robotName} />
-              <DetailRow label="Model" value={preselected.robotModel} />
-              <DetailRow label="Reputation" value={`${preselected.robotReputation.toFixed(1)} / 5.0`} />
-              <DetailRow label="Stake" value={`${preselected.robotStake} USDC`} />
-              <DetailRow label="Price" value={`${preselected.priceUsdc.toFixed(2)} USDC`} accent />
-              <DetailRow label="ETA" value={`${preselected.etaMinutes} min`} />
+              <DetailRow label="Robot" value={chosen.robotName} />
+              <DetailRow label="Model" value={chosen.robotModel} />
+              <DetailRow label="Reputation" value={`${chosen.robotReputation.toFixed(1)} / 5.0`} />
+              <DetailRow label="Stake" value={`${chosen.robotStake} USDC`} />
+              <DetailRow label="Price" value={`${chosen.priceUsdc.toFixed(2)} USDC`} accent />
+              <DetailRow label="ETA" value={`${chosen.etaMinutes} min`} />
             </div>
           </>
         )}
@@ -408,6 +581,168 @@ function PostJobTab({ preselected }: { preselected: JobOffering | null }) {
               </span>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Follow-job widget ────────────────────────────────────────────────
+
+function useCountdown(targetSec: number) {
+  const [remaining, setRemaining] = useState(targetSec);
+  useEffect(() => {
+    setRemaining(targetSec);
+    const t = setInterval(() => {
+      setRemaining((r) => (r > 0 ? r - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [targetSec]);
+  return remaining;
+}
+
+function FollowJobWidget({ job }: { job: Job }) {
+  const totalSec = Math.max(60, job.slaMinutes * 60);
+  const elapsedSec = Math.round((job.timeElapsedMinutes ?? 0) * 60);
+  const initialRemaining = Math.max(0, totalSec - elapsedSec);
+  const remaining = useCountdown(initialRemaining);
+
+  const [secsSinceHeartbeat, setSecsSinceHeartbeat] = useState(8);
+  useEffect(() => {
+    setSecsSinceHeartbeat(8);
+    const t = setInterval(() => {
+      setSecsSinceHeartbeat((s) => {
+        const next = s + 1;
+        return next > 14 ? 4 : next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [job.id]);
+
+  const phaseIdx = PHASE_ORDER.indexOf(job.phase);
+  const progress = phaseIdx >= 0 ? phaseIdx / (PHASE_ORDER.length - 1) : 0;
+
+  const beatTone: "live" | "warn" | "fail" =
+    secsSinceHeartbeat < 15 ? "live" : secsSinceHeartbeat < 60 ? "warn" : "fail";
+  const beatLabel = beatTone === "live" ? "fresh" : beatTone === "warn" ? "stale" : "lost";
+
+  const mm = Math.floor(remaining / 60).toString().padStart(2, "0");
+  const ss = (remaining % 60).toString().padStart(2, "0");
+
+  const eventLog = useMemo(() => {
+    const baseT = new Date(job.createdAt).getTime();
+    const items: { kind: string; label: string; tone: "live" | "ok" | "idle" | "warn"; t: number }[] = [
+      { kind: "assigned", label: `assigned · ${job.robotName ?? "robot"}`, tone: "ok", t: baseT },
+    ];
+    if (phaseIdx >= 2) items.push({ kind: "escrow", label: `escrow locked · ${job.bounty.toFixed(2)} USDC`, tone: "ok", t: baseT + 6_000 });
+    if (phaseIdx >= 3) items.push({ kind: "phase", label: "phase · navigating_pickup", tone: "live", t: baseT + 18_000 });
+    if (phaseIdx >= 4) items.push({ kind: "phase", label: "phase · picking_up", tone: "live", t: baseT + 42_000 });
+    if (phaseIdx >= 5) items.push({ kind: "phase", label: "phase · navigating_delivery", tone: "live", t: baseT + 60_000 });
+    if (phaseIdx >= 6) items.push({ kind: "phase", label: "phase · delivering", tone: "live", t: baseT + 96_000 });
+    items.push({ kind: "position", label: "position · 52.4124, -1.5092", tone: "idle", t: baseT + 84_000 });
+    items.push({ kind: "heartbeat", label: `heartbeat · ${secsSinceHeartbeat}s ago`, tone: beatTone === "fail" ? "warn" : "idle", t: baseT + 100_000 });
+    return items.sort((a, b) => b.t - a.t).slice(0, 7);
+  }, [job, phaseIdx, secsSinceHeartbeat, beatTone]);
+
+  const fmtTime = (t: number) =>
+    new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  return (
+    <div className="space-y-4">
+      {/* Mini map */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+            Live Position
+          </h3>
+          <span className="font-mono text-[10px] text-text-tertiary">{job.from} &rarr; {job.to}</span>
+        </div>
+        <div className="relative h-44 rounded-xl border border-border bg-surface-0 overflow-hidden">
+          <svg viewBox="0 0 320 160" className="absolute inset-0 h-full w-full text-border">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <line key={`v-${i}`} x1={i * 40} y1="0" x2={i * 40} y2="160" stroke="currentColor" strokeWidth="0.5" />
+            ))}
+            {Array.from({ length: 4 }).map((_, i) => (
+              <line key={`h-${i}`} x1="0" y1={i * 40} x2="320" y2={i * 40} stroke="currentColor" strokeWidth="0.5" />
+            ))}
+            <rect x="24" y="100" width="40" height="22" className="fill-none stroke-text-tertiary" strokeWidth="1" />
+            <rect x="248" y="36" width="48" height="22" className="fill-none stroke-text-tertiary" strokeWidth="1" />
+            <path
+              d="M 44 111 Q 140 70 272 47"
+              className="fill-none stroke-accent"
+              strokeWidth="1.25"
+              strokeDasharray="3 3"
+              opacity="0.6"
+            />
+          </svg>
+          {/* origin label */}
+          <span className="absolute left-2 top-[78px] font-mono text-[9px] text-text-tertiary uppercase tracking-wider">
+            from
+          </span>
+          {/* dest label */}
+          <span className="absolute right-2 top-2 font-mono text-[9px] text-text-tertiary uppercase tracking-wider">
+            to
+          </span>
+          {/* dot animated along the dashed path */}
+          <motion.span
+            className="absolute h-2.5 w-2.5 rounded-full bg-accent"
+            style={{ boxShadow: "0 0 0 4px rgba(182,114,55,0.18)" }}
+            animate={{
+              left: `${44 + progress * 228}px`,
+              top: `${111 - progress * 64}px`,
+            }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          <div>
+            <div className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">ETA</div>
+            <div className="font-mono text-[18px] font-semibold tabular text-text-primary mt-1">
+              {mm}:{ss}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">SLA</div>
+            <div className="font-mono text-[18px] font-semibold tabular text-text-primary mt-1">
+              {job.slaMinutes}m
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Heartbeat</div>
+            <div className="flex items-center gap-1.5 mt-2">
+              <Dot tone={beatTone} />
+              <Dot tone={secsSinceHeartbeat < 30 ? beatTone : "idle"} />
+              <Dot tone={secsSinceHeartbeat < 45 ? beatTone : "idle"} />
+              <span className="font-mono text-[10px] text-text-tertiary ml-1">{beatLabel}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Event stream */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+            Event Stream
+          </h3>
+          <span className="font-mono text-[10px] text-teal flex items-center gap-1.5">
+            <Dot tone="live" /> SSE
+          </span>
+        </div>
+        <div className="rounded-xl border border-border bg-surface-0 p-3 space-y-1.5 max-h-56 overflow-y-auto">
+          {eventLog.map((e, i) => (
+            <motion.div
+              key={`${e.kind}-${e.t}-${i}`}
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.03 }}
+              className="grid grid-cols-[60px,12px,1fr] gap-2 items-center"
+            >
+              <span className="font-mono text-[10px] text-text-tertiary tabular">{fmtTime(e.t)}</span>
+              <span className="flex justify-center"><Dot tone={e.tone} /></span>
+              <span className="font-mono text-[11px] text-text-secondary truncate">{e.label}</span>
+            </motion.div>
+          ))}
         </div>
       </div>
     </div>
@@ -436,7 +771,7 @@ function ActiveJobsTab() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-7 gap-5">
       {/* Job list */}
       <div className="lg:col-span-2 space-y-3">
         <h2 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
@@ -554,33 +889,6 @@ function ActiveJobsTab() {
                 </div>
               </div>
 
-              {/* Log */}
-              <div className="rounded-2xl border border-border bg-surface-1 p-5">
-                <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider mb-3">
-                  Activity Log
-                </h3>
-                <div className="rounded-xl border border-border bg-surface-0 p-3 space-y-1.5 max-h-48 overflow-y-auto">
-                  {PHASE_ORDER.slice(0, currentPhaseIdx + 1).map((phase, i) => (
-                    <motion.div
-                      key={phase}
-                      initial={{ opacity: 0, x: -4 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex items-center gap-2"
-                    >
-                      <span className="font-mono text-[10px] text-text-tertiary w-14 flex-shrink-0">
-                        {new Date(
-                          new Date(selectedJob.createdAt).getTime() + i * 30000
-                        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      <span className="font-mono text-[10px] text-accent">&gt;</span>
-                      <span className="font-mono text-[11px] text-text-secondary">
-                        {PHASE_LABELS[phase]}
-                      </span>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
             </motion.div>
           </AnimatePresence>
         ) : (
@@ -588,6 +896,22 @@ function ActiveJobsTab() {
             <p className="font-mono text-[13px] text-text-tertiary">Select a job to view details.</p>
           </div>
         )}
+      </div>
+
+      {/* Follow-job right rail */}
+      <div className="lg:col-span-2">
+        {selectedJob ? (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`follow-${selectedJob.id}`}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+            >
+              <FollowJobWidget job={selectedJob} />
+            </motion.div>
+          </AnimatePresence>
+        ) : null}
       </div>
     </div>
   );
@@ -660,6 +984,17 @@ function HistoryTab() {
 
 function WalletTab() {
   const recentSettlements = SETTLEMENTS.slice(0, 5);
+  const [bumpOpen, setBumpOpen] = useState(false);
+
+  const dailyPct = Math.min(100, Math.round((SPEND_CAPS.dailyUsed / SPEND_CAPS.dailyCap) * 100));
+  const dailyRemaining = Math.max(0, SPEND_CAPS.dailyCap - SPEND_CAPS.dailyUsed);
+  const dailyTone =
+    dailyPct >= 90 ? "alert" : dailyPct >= 75 ? "amber" : "accent";
+
+  const expiresAtDate = new Date(SPEND_CAPS.sessionKeyExpiresAt);
+  const expiresInMs = expiresAtDate.getTime() - new Date("2026-03-08T03:18:00Z").getTime();
+  const expiresInH = Math.max(0, Math.floor(expiresInMs / 3_600_000));
+  const expiresInM = Math.max(0, Math.floor((expiresInMs % 3_600_000) / 60_000));
 
   return (
     <div className="space-y-5">
@@ -669,6 +1004,77 @@ function WalletTab() {
         <StatCard label="Total Spent" value={`${AGENT_WALLET.totalSpent.toFixed(2)}`} sub="USDC" />
         <StatCard label="Active Escrow" value={`${AGENT_WALLET.activeEscrow.toFixed(2)}`} sub="USDC" />
         <StatCard label="Jobs Posted" value={`${AGENT_WALLET.jobsPosted}`} sub="lifetime" />
+      </div>
+
+      {/* Spend controls */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+            Spend Controls
+          </h3>
+          <button
+            onClick={() => setBumpOpen(true)}
+            className="font-mono text-[11px] px-3 py-1.5 rounded-lg border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+          >
+            Bump cap
+          </button>
+        </div>
+
+        {/* Daily cap */}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Daily cap</span>
+            <span className="font-mono text-[12px] tabular text-text-primary">
+              ${SPEND_CAPS.dailyUsed.toFixed(0)}
+              <span className="text-text-tertiary"> / ${SPEND_CAPS.dailyCap.toFixed(0)}</span>
+            </span>
+          </div>
+          <div className="h-1.5 w-full bg-border rounded-full overflow-hidden">
+            <motion.div
+              className={`h-full ${dailyTone === "alert" ? "bg-alert" : dailyTone === "amber" ? "bg-amber" : "bg-accent"}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${dailyPct}%` }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            />
+          </div>
+          <div className="flex items-center justify-between font-mono text-[10px]">
+            <span className={dailyTone === "alert" ? "text-alert" : dailyTone === "amber" ? "text-amber" : "text-text-tertiary"}>
+              {dailyPct >= 90 ? "Near cap — agent will pause posting" : `${dailyRemaining.toFixed(0)} USDC remaining today`}
+            </span>
+            <span className="text-text-tertiary">resets 00:00 UTC</span>
+          </div>
+        </div>
+
+        {/* Per-job + session key */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-border bg-surface-0 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Per-job cap</span>
+              <span className="font-mono text-[14px] tabular text-text-primary">${SPEND_CAPS.perJobCap.toFixed(2)}</span>
+            </div>
+            <p className="font-mono text-[10px] text-text-tertiary leading-relaxed">
+              SDK rejects postAndAssign with bounty &gt; cap before signing.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface-0 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Session key</span>
+              <span className="flex items-center gap-1.5">
+                <Dot tone={expiresInH < 1 ? "warn" : "live"} />
+                <span className="font-mono text-[10px] text-text-secondary">{SPEND_CAPS.sessionKeyId}</span>
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="font-mono text-[14px] tabular text-text-primary">
+                {expiresInH}h {expiresInM.toString().padStart(2, "0")}m
+              </span>
+              <span className="font-mono text-[10px] text-text-tertiary">
+                until {expiresAtDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Wallet details */}
@@ -726,7 +1132,69 @@ function WalletTab() {
           </div>
         )}
       </div>
+
+      <BumpCapModal open={bumpOpen} onClose={() => setBumpOpen(false)} />
     </div>
+  );
+}
+
+// ─── Bump-cap modal ───────────────────────────────────────────────────
+
+function BumpCapModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-bean/50 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.16 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-border bg-surface-1 p-6 space-y-5"
+          >
+            <div className="space-y-1.5">
+              <h3 className="font-mono text-[14px] font-semibold text-text-primary">Request cap bump</h3>
+              <p className="font-mono text-[11px] text-text-secondary leading-relaxed">
+                A new daily cap requires re-signing the session key from the agent creator's wallet. No transaction is broadcast in this demo.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-surface-0 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Current</span>
+                <span className="font-mono text-[12px] tabular text-text-primary">$100 / day</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">Proposed</span>
+                <span className="font-mono text-[12px] tabular text-accent">$150 / day</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={onClose}
+                className="font-mono text-[11px] px-3 py-2 rounded-lg border border-border bg-surface-0 text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onClose}
+                className="font-mono text-[11px] font-semibold px-3 py-2 rounded-lg bg-accent text-[#020202] hover:bg-accent/90 transition-colors"
+              >
+                Send to creator
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

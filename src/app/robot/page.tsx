@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AppShell from "@/components/shell/AppShell";
 import { useCardGlow } from "@/hooks/useCardGlow";
@@ -63,6 +63,87 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   return `${hrs}h ago`;
 }
+
+function fmtClock(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// ─── Depth: Reputation history (30 days) ─────────────────────────────
+
+type RepPoint = { day: number; date: string; reputation: number; slashed?: { reason: string; delta: number } };
+
+const REPUTATION_HISTORY: RepPoint[] = (() => {
+  const out: RepPoint[] = [];
+  const today = new Date("2026-03-08T00:00:00Z");
+  let rep = 4.62;
+  for (let d = 29; d >= 0; d--) {
+    const date = new Date(today);
+    date.setUTCDate(date.getUTCDate() - d);
+    const drift = Math.sin(d * 0.7) * 0.04 + (29 - d) * 0.008;
+    rep = 4.62 + drift;
+    let slashed: RepPoint["slashed"] | undefined;
+    if (d === 22) {
+      rep -= 0.18;
+      slashed = { reason: "SLA breach · JOB-0x4A91", delta: -0.18 };
+    }
+    if (d === 9) {
+      rep -= 0.09;
+      slashed = { reason: "Late submission · JOB-0xB7C2", delta: -0.09 };
+    }
+    out.push({
+      day: 30 - d,
+      date: date.toISOString().slice(0, 10),
+      reputation: Math.max(0, Math.min(5, Number(rep.toFixed(2)))),
+      slashed,
+    });
+  }
+  out[out.length - 1].reputation = 4.9;
+  return out;
+})();
+
+// ─── Depth: 24h phase timeline ───────────────────────────────────────
+
+type TimelineEvent = {
+  jobId: string;
+  taskType: TaskType;
+  phase: JobPhase;
+  timestamp: string;
+  status: "active" | "completed" | "failed";
+};
+
+const TIMELINE_24H: TimelineEvent[] = [
+  { jobId: "JOB-0x7F3A", taskType: "CARRY", phase: "matching", timestamp: "2026-03-08T03:10:18Z", status: "active" },
+  { jobId: "JOB-0x7F3A", taskType: "CARRY", phase: "escrow_locked", timestamp: "2026-03-08T03:11:02Z", status: "active" },
+  { jobId: "JOB-0x7F3A", taskType: "CARRY", phase: "navigating_pickup", timestamp: "2026-03-08T03:11:54Z", status: "active" },
+  { jobId: "JOB-0x7F3A", taskType: "CARRY", phase: "picking_up", timestamp: "2026-03-08T03:12:36Z", status: "active" },
+  { jobId: "JOB-0x7F3A", taskType: "CARRY", phase: "navigating_delivery", timestamp: "2026-03-08T03:13:14Z", status: "active" },
+  { jobId: "JOB-0x5D4E", taskType: "CARRY", phase: "settled", timestamp: "2026-03-08T02:51:22Z", status: "completed" },
+  { jobId: "JOB-0x5D4E", taskType: "CARRY", phase: "proof_submitted", timestamp: "2026-03-08T02:51:14Z", status: "completed" },
+  { jobId: "JOB-0xPREV1", taskType: "CARRY", phase: "settled", timestamp: "2026-03-08T01:12:00Z", status: "completed" },
+  { jobId: "JOB-0xPREV1", taskType: "CARRY", phase: "proof_submitted", timestamp: "2026-03-08T01:11:42Z", status: "completed" },
+  { jobId: "JOB-0xPREV3", taskType: "NAVIGATE", phase: "settled", timestamp: "2026-03-07T22:48:11Z", status: "completed" },
+  { jobId: "JOB-0xPREV3", taskType: "NAVIGATE", phase: "proof_submitted", timestamp: "2026-03-07T22:47:55Z", status: "completed" },
+  { jobId: "JOB-0xPREV4", taskType: "CARRY", phase: "settled", timestamp: "2026-03-07T19:14:02Z", status: "completed" },
+  { jobId: "JOB-0xPREV5", taskType: "CARRY", phase: "settled", timestamp: "2026-03-07T17:02:38Z", status: "failed" },
+];
+
+// ─── Depth: SLA performance per task type ────────────────────────────
+
+type SlaRow = {
+  taskType: TaskType;
+  jobs: number;
+  avgMin: number;
+  p50Min: number;
+  p95Min: number;
+  slaMetPct: number;
+};
+
+const SLA_PERFORMANCE: SlaRow[] = [
+  { taskType: "CARRY", jobs: 94, avgMin: 3.4, p50Min: 3.1, p95Min: 4.7, slaMetPct: 98.9 },
+  { taskType: "NAVIGATE", jobs: 38, avgMin: 5.2, p50Min: 4.8, p95Min: 7.1, slaMetPct: 100 },
+  { taskType: "INSPECT", jobs: 8, avgMin: 6.9, p50Min: 6.5, p95Min: 8.3, slaMetPct: 87.5 },
+  { taskType: "SORT", jobs: 2, avgMin: 9.1, p50Min: 9.0, p95Min: 9.4, slaMetPct: 100 },
+];
 
 // ─── Tab 1: Incoming Jobs ─────────────────────────────────────────────
 
@@ -458,6 +539,8 @@ function ActiveJobTab() {
             Phase {currentPhaseIdx + 1} of {PHASE_ORDER.length}
           </span>
         </div>
+
+        <PhaseTimeline24h activeJobId={activeJob.id} />
       </div>
     </div>
   );
@@ -861,6 +944,12 @@ function CapabilitiesTab() {
         </p>
       </div>
 
+      <ReputationChart />
+
+      <SlaPerformanceTable />
+
+      <ManagerNotes />
+
       {/* Job Offerings table */}
       <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-4">
         <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
@@ -939,6 +1028,390 @@ function CapabilitiesTab() {
         <p className="font-mono text-[10px] text-text-tertiary">
           Stake is slashed for failed jobs. Maintain a healthy stake to receive job assignments.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Depth: Reputation chart ─────────────────────────────────────────
+
+function ReputationChart() {
+  const W = 640;
+  const H = 180;
+  const padL = 30;
+  const padR = 16;
+  const padT = 14;
+  const padB = 22;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const minRep = 4.3;
+  const maxRep = 5.0;
+
+  const x = (i: number) => padL + (i / (REPUTATION_HISTORY.length - 1)) * innerW;
+  const y = (r: number) => padT + (1 - (r - minRep) / (maxRep - minRep)) * innerH;
+
+  const linePath = REPUTATION_HISTORY.map((p, i) =>
+    `${i === 0 ? "M" : "L"} ${x(i).toFixed(2)} ${y(p.reputation).toFixed(2)}`
+  ).join(" ");
+
+  const areaPath = `${linePath} L ${x(REPUTATION_HISTORY.length - 1).toFixed(2)} ${padT + innerH} L ${padL} ${padT + innerH} Z`;
+
+  const slashes = REPUTATION_HISTORY.filter((p) => p.slashed);
+  const current = REPUTATION_HISTORY[REPUTATION_HISTORY.length - 1].reputation;
+  const start = REPUTATION_HISTORY[0].reputation;
+  const delta = current - start;
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-4">
+      <div className="flex items-end justify-between">
+        <div className="space-y-1">
+          <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+            Reputation · 30 days
+          </h3>
+          <span className="font-mono text-[10px] text-text-tertiary">
+            Daily on-chain rating · slashes annotated
+          </span>
+        </div>
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-[24px] font-bold text-text-primary tabular">{current.toFixed(2)}</span>
+          <span className={`font-mono text-[11px] tabular ${delta >= 0 ? "text-forest" : "text-alert"}`}>
+            {delta >= 0 ? "+" : ""}{delta.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface-0 p-3">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="none">
+          {[5.0, 4.8, 4.6, 4.4].map((tick) => (
+            <g key={tick}>
+              <line
+                x1={padL}
+                x2={W - padR}
+                y1={y(tick)}
+                y2={y(tick)}
+                stroke="var(--color-line-soft)"
+                strokeWidth={0.5}
+                strokeDasharray="2 3"
+              />
+              <text
+                x={padL - 6}
+                y={y(tick) + 3}
+                textAnchor="end"
+                fontFamily="IBM Plex Mono, monospace"
+                fontSize="9"
+                fill="var(--color-slate)"
+              >
+                {tick.toFixed(1)}
+              </text>
+            </g>
+          ))}
+
+          <path d={areaPath} fill="var(--color-amber-tint)" />
+          <path d={linePath} fill="none" stroke="var(--color-amber)" strokeWidth={1.4} />
+
+          {REPUTATION_HISTORY.map((p, i) =>
+            i % 5 === 0 || i === REPUTATION_HISTORY.length - 1 ? (
+              <text
+                key={`x-${i}`}
+                x={x(i)}
+                y={H - 6}
+                textAnchor="middle"
+                fontFamily="IBM Plex Mono, monospace"
+                fontSize="9"
+                fill="var(--color-slate)"
+              >
+                {p.date.slice(5)}
+              </text>
+            ) : null
+          )}
+
+          {slashes.map((p) => {
+            const i = REPUTATION_HISTORY.indexOf(p);
+            return (
+              <g key={`slash-${i}`}>
+                <line
+                  x1={x(i)}
+                  x2={x(i)}
+                  y1={padT}
+                  y2={padT + innerH}
+                  stroke="var(--color-alert)"
+                  strokeWidth={0.75}
+                  strokeDasharray="2 2"
+                  opacity={0.6}
+                />
+                <circle cx={x(i)} cy={y(p.reputation)} r={3.5} fill="var(--color-alert)" />
+              </g>
+            );
+          })}
+
+          <circle
+            cx={x(REPUTATION_HISTORY.length - 1)}
+            cy={y(current)}
+            r={3.5}
+            fill="var(--color-amber)"
+          />
+        </svg>
+      </div>
+
+      {slashes.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">
+            Slash events ({slashes.length})
+          </span>
+          {slashes.map((p) => (
+            <div
+              key={p.date}
+              className="flex items-center justify-between rounded-lg border border-alert/20 bg-alert/[0.04] px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-alert" />
+                <span className="font-mono text-[11px] text-text-primary tabular">{p.date}</span>
+                <span className="font-mono text-[11px] text-text-secondary">{p.slashed!.reason}</span>
+              </div>
+              <span className="font-mono text-[11px] text-alert tabular">{p.slashed!.delta.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Depth: Manager notes ────────────────────────────────────────────
+
+const NOTES_INITIAL =
+  "Right leg servo recalibrated 2026-03-04 — keep an eye on torque spikes during CARRY > 3kg. Avoid Zone C until water leak by Rack C2 is fixed.";
+
+const NOTES_MAX = 600;
+
+function ManagerNotes() {
+  const [text, setText] = useState(NOTES_INITIAL);
+  const [lastEdited, setLastEdited] = useState<string>("2026-03-07T18:42:00Z");
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!dirty || savedAt === null) return;
+    const t = setTimeout(() => setSavedAt(null), 1600);
+    return () => clearTimeout(t);
+  }, [dirty, savedAt]);
+
+  const handleSave = () => {
+    const now = new Date().toISOString();
+    setLastEdited(now);
+    setDirty(false);
+    setSavedAt(Date.now());
+  };
+
+  const remaining = NOTES_MAX - text.length;
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+          Manager Notes
+        </h3>
+        <span className="font-mono text-[10px] text-text-tertiary">
+          Last edited {timeAgo(lastEdited)}
+        </span>
+      </div>
+
+      <textarea
+        value={text}
+        maxLength={NOTES_MAX}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+        }}
+        rows={5}
+        className="w-full resize-none font-mono text-[12px] leading-relaxed bg-surface-0 border border-border rounded-xl px-4 py-3 text-text-primary outline-none focus:border-accent/40 placeholder:text-text-tertiary/50"
+        placeholder="Operator notes — maintenance flags, behavioral quirks, deployment context…"
+      />
+
+      <div className="flex items-center justify-between">
+        <span
+          className={`font-mono text-[10px] tabular ${
+            remaining < 50 ? "text-alert" : "text-text-tertiary"
+          }`}
+        >
+          {text.length} / {NOTES_MAX} chars
+        </span>
+        <div className="flex items-center gap-3">
+          <AnimatePresence>
+            {savedAt && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="font-mono text-[10px] text-accent"
+              >
+                Saved
+              </motion.span>
+            )}
+          </AnimatePresence>
+          <button
+            onClick={handleSave}
+            disabled={!dirty}
+            className="font-mono text-[11px] font-semibold px-4 py-1.5 rounded-lg bg-accent text-[#020202] hover:bg-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Depth: SLA Performance table ────────────────────────────────────
+
+function SlaPerformanceTable() {
+  return (
+    <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-4">
+      <div className="flex items-end justify-between">
+        <div className="space-y-1">
+          <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+            SLA Performance
+          </h3>
+          <span className="font-mono text-[10px] text-text-tertiary">
+            Per task type · trailing 30 days
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface-0 overflow-hidden">
+        <div className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.7fr,0.7fr,1fr] gap-2 px-4 py-2.5 border-b border-border">
+          {["Task", "Jobs", "Avg", "P50", "P95", "SLA Met"].map((h) => (
+            <span key={h} className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">
+              {h}
+            </span>
+          ))}
+        </div>
+        {SLA_PERFORMANCE.map((row) => (
+          <div
+            key={row.taskType}
+            className="grid grid-cols-[1.2fr,0.7fr,0.7fr,0.7fr,0.7fr,1fr] gap-2 px-4 py-3 border-b border-border/40 last:border-b-0 items-center"
+          >
+            <TaskBadge type={row.taskType} />
+            <span className="font-mono text-[11px] text-text-secondary tabular">{row.jobs}</span>
+            <span className="font-mono text-[11px] text-text-primary tabular">{row.avgMin.toFixed(1)}m</span>
+            <span className="font-mono text-[11px] text-text-secondary tabular">{row.p50Min.toFixed(1)}m</span>
+            <span className="font-mono text-[11px] text-text-secondary tabular">{row.p95Min.toFixed(1)}m</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-surface-1 overflow-hidden border border-border/40">
+                <div
+                  className={`h-full rounded-full ${
+                    row.slaMetPct >= 95 ? "bg-accent" : row.slaMetPct >= 90 ? "bg-amber" : "bg-alert"
+                  }`}
+                  style={{ width: `${row.slaMetPct}%` }}
+                />
+              </div>
+              <span
+                className={`font-mono text-[11px] tabular w-12 text-right ${
+                  row.slaMetPct >= 95 ? "text-accent" : row.slaMetPct >= 90 ? "text-amber" : "text-alert"
+                }`}
+              >
+                {row.slaMetPct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Depth: 24h vertical timeline ────────────────────────────────────
+
+function PhaseTimeline24h({ activeJobId }: { activeJobId: string | null }) {
+  const events = useMemo(
+    () =>
+      [...TIMELINE_24H].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      ),
+    []
+  );
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, TimelineEvent[]>();
+    for (const ev of events) {
+      if (!map.has(ev.jobId)) map.set(ev.jobId, []);
+      map.get(ev.jobId)!.push(ev);
+    }
+    return Array.from(map.entries());
+  }, [events]);
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface-1 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-mono text-[12px] font-semibold text-text-primary uppercase tracking-wider">
+          Last 24h
+        </h3>
+        <span className="font-mono text-[10px] text-text-tertiary">{events.length} events</span>
+      </div>
+
+      <div className="space-y-5">
+        {grouped.map(([jobId, evs]) => {
+          const isActive = jobId === activeJobId;
+          const status = evs[0].status;
+          return (
+            <div key={jobId} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      status === "active"
+                        ? "bg-teal pulse-glow"
+                        : status === "completed"
+                        ? "bg-accent"
+                        : "bg-alert"
+                    }`}
+                  />
+                  <span className="font-mono text-[11px] text-text-primary">{jobId}</span>
+                  <TaskBadge type={evs[0].taskType} />
+                </div>
+                <span className="font-mono text-[10px] text-text-tertiary uppercase tracking-wider">
+                  {status}
+                </span>
+              </div>
+
+              <div className="pl-1">
+                {evs.map((ev, i) => {
+                  const isFirst = i === 0;
+                  return (
+                    <div key={`${ev.jobId}-${ev.phase}-${i}`} className="flex items-start gap-3">
+                      <div className="flex flex-col items-center mt-0.5">
+                        <div
+                          className={`h-2 w-2 rounded-full ${
+                            isFirst && status === "active"
+                              ? "bg-teal"
+                              : status === "failed"
+                              ? "bg-alert/60"
+                              : "bg-accent/60"
+                          }`}
+                        />
+                        {i < evs.length - 1 && (
+                          <div className="w-px h-5 bg-border" />
+                        )}
+                      </div>
+                      <div className="flex-1 flex items-baseline justify-between pb-2">
+                        <span
+                          className={`font-mono text-[11px] ${
+                            isFirst ? "text-text-primary" : "text-text-secondary"
+                          }`}
+                        >
+                          {PHASE_LABELS[ev.phase]}
+                        </span>
+                        <span className="font-mono text-[10px] text-text-tertiary tabular">
+                          {fmtClock(ev.timestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

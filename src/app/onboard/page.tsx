@@ -3,711 +3,1444 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import {
+  Eyebrow,
+  StatusPill,
+  MonoNum,
+  Kbd,
+  Dot,
+  SectionLabel,
+  AmberLink,
+} from "@/components/Primitives";
+import {
+  RovaMark,
+  OperatorIcon,
+  AgentIcon,
+  WalletIcon,
+  RobotIcon,
+  LockIcon,
+  PinIcon,
+  CheckIcon,
+  ArrowRightIcon,
+  CommandIcon,
+} from "@/components/Icons";
 
-// ─── Types ───────────────────────────────────────────────────────────
-type Role = null | "agent" | "operator";
-type AgentStep = "task" | "select" | "escrow" | "tracking" | "settled";
-type OperatorStep = "register" | "capabilities" | "stake" | "offerings" | "live";
+type Door = null | "operator" | "agent";
 
-interface TaskForm {
-  taskType: string;
-  from: string;
-  to: string;
-  bounty: string;
-  sla: string;
-}
+const TASK_TYPES = ["CARRY", "SORT", "NAVIGATE", "INSPECT"] as const;
+type TaskType = (typeof TASK_TYPES)[number];
 
-interface RobotForm {
-  name: string;
-  model: string;
-  wallet: string;
-}
-
-// ─── Mock robots for agent selection ─────────────────────────────────
-const AVAILABLE_ROBOTS = [
-  { id: "G1-ALPHA", price: 1.75, eta: "2min", rep: 4.9, stake: 500, jobs: 847 },
-  { id: "G1-BETA", price: 1.90, eta: "3min", rep: 4.7, stake: 500, jobs: 612 },
-  { id: "G1-DELTA", price: 1.80, eta: "2.5min", rep: 4.8, stake: 500, jobs: 723 },
+const ROBOT_MODELS = [
+  "Unitree G1",
+  "Boston Dynamics Spot",
+  "Reachy",
+  "Custom ROS2",
 ];
 
-const TASK_TYPES = ["CARRY", "NAVIGATE", "INSPECT", "SORT"];
+interface PolicyTemplate {
+  id: string;
+  title: string;
+  summary: string;
+  autoAccept: boolean;
+  floors: Record<string, number>;
+  recommended?: boolean;
+}
 
-const fadeIn = {
-  initial: { opacity: 0, y: 20, filter: "blur(4px)" },
-  animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, y: -10, filter: "blur(4px)" },
-  transition: { duration: 0.4 },
+const POLICY_TEMPLATES: PolicyTemplate[] = [
+  {
+    id: "cautious",
+    title: "Cautious Warehouse",
+    summary:
+      "Manual approval · Geofence to building · 4.0+ reputation required.",
+    autoAccept: false,
+    floors: { CARRY: 4.5, SORT: 3.0 },
+    recommended: true,
+  },
+  {
+    id: "fulfillment",
+    title: "24/7 Fulfillment",
+    summary: "Auto-accept · Round-the-clock · 3.0+ reputation · Indoor + RTK.",
+    autoAccept: true,
+    floors: { CARRY: 4.0, SORT: 2.75 },
+  },
+  {
+    id: "lastmile",
+    title: "Outdoor Last-Mile",
+    summary: "Wider area · Daylight only · 4.5+ rep · Outdoor + rain capable.",
+    autoAccept: false,
+    floors: { CARRY: 6.0, SORT: 3.5 },
+  },
+];
+
+const fade = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -4 },
+  transition: { duration: 0.24, ease: [0.2, 0, 0, 1] as const },
 };
 
-// ─── Shared UI ───────────────────────────────────────────────────────
-function TopBar() {
+/* ─── Shared chrome ────────────────────────────────────────────── */
+
+function TopBar({
+  door,
+  onBackToDoors,
+}: {
+  door: Door;
+  onBackToDoors: () => void;
+}) {
   return (
-    <div className="border-b border-border bg-surface-0/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-12 max-w-4xl items-center justify-between px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/10 border border-accent/20">
-              <div className="h-1.5 w-1.5 rounded-full bg-accent" />
-            </div>
-            <span className="text-[14px] font-semibold text-text-primary">ROVA</span>
+    <header className="border-b border-line-paper bg-paper">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-6">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 text-bean hover:text-amber transition-colors"
+          >
+            <RovaMark size={18} />
+            <span className="font-sans text-[14px] font-semibold tracking-[-0.01em]">
+              ROVA
+            </span>
           </Link>
-          <span className="text-text-tertiary">/</span>
-          <span className="text-[13px] text-text-secondary">Get Started</span>
+          <span className="h-3 w-px bg-line-soft" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate">
+            Onboarding
+          </span>
         </div>
-        <Link href="/dashboard" className="text-[13px] text-text-tertiary hover:text-text-primary transition-colors">
-          Dashboard
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function StepIndicator({ steps, current }: { steps: string[]; current: number }) {
-  return (
-    <div className="flex items-center gap-2 mb-8">
-      {steps.map((s, i) => (
-        <div key={s} className="flex items-center gap-2">
-          <div className={`flex h-6 w-6 items-center justify-center rounded-full font-mono text-[10px] font-bold transition-all duration-300 ${
-            i < current
-              ? "bg-accent text-background shadow-[0_0_12px_rgba(239,111,46,0.3)]"
-              : i === current
-              ? "bg-accent/20 text-accent border border-accent/40"
-              : "bg-surface-2 text-text-tertiary"
-          }`}>
-            {i < current ? "\u2713" : i + 1}
-          </div>
-          <span className={`text-[11px] hidden sm:inline ${
-            i === current ? "text-text-primary" : "text-text-tertiary"
-          }`}>{s}</span>
-          {i < steps.length - 1 && (
-            <div className={`h-px w-6 transition-colors ${i < current ? "bg-accent/40" : "bg-border"}`} />
+        <div className="flex items-center gap-5">
+          {door && (
+            <button
+              onClick={onBackToDoors}
+              className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate hover:text-bean transition-colors"
+            >
+              ← Switch door
+            </button>
           )}
+          <Link
+            href="/dashboard"
+            className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate hover:text-bean transition-colors"
+          >
+            Dashboard
+          </Link>
         </div>
-      ))}
-    </div>
+      </div>
+    </header>
   );
 }
 
-function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+function ProgressDots({
+  total,
+  current,
+  labels,
+}: {
+  total: number;
+  current: number;
+  labels: string[];
+}) {
   return (
-    <div className="mb-4">
-      <label className="block text-[11px] font-medium text-text-tertiary uppercase tracking-wider mb-1.5">{label}</label>
-      {children}
+    <div className="flex items-center gap-3">
+      {Array.from({ length: total }).map((_, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <div key={i} className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span
+                className={[
+                  "flex h-5 w-5 items-center justify-center border transition-colors",
+                  done
+                    ? "border-bean bg-bean text-paper"
+                    : active
+                    ? "border-bean bg-paper text-bean"
+                    : "border-line-soft bg-paper text-slate",
+                ].join(" ")}
+                style={{ borderRadius: 999 }}
+              >
+                {done ? (
+                  <CheckIcon size={10} />
+                ) : (
+                  <span className="font-mono text-[9px] tabular">{i + 1}</span>
+                )}
+              </span>
+              <span
+                className={[
+                  "hidden sm:inline font-mono text-[10px] uppercase tracking-[0.14em]",
+                  active ? "text-bean" : done ? "text-bean-soft" : "text-slate",
+                ].join(" ")}
+              >
+                {labels[i]}
+              </span>
+            </div>
+            {i < total - 1 && (
+              <span
+                className={[
+                  "h-px w-6 transition-colors",
+                  done ? "bg-bean" : "bg-line-soft",
+                ].join(" ")}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function InputField({ value, onChange, placeholder, type = "text" }: { value: string; onChange: (v: string) => void; placeholder: string; type?: string }) {
+function StepHeader({
+  doorLabel,
+  index,
+  total,
+  title,
+  subtitle,
+}: {
+  doorLabel: string;
+  index: number;
+  total: number;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="mb-8">
+      <Eyebrow tone="amber">
+        {doorLabel} · Step {index + 1} of {total}
+      </Eyebrow>
+      <h1 className="mt-4 font-sans text-[28px] leading-[1.1] tracking-[-0.02em] font-semibold text-bean sm:text-[34px]">
+        {title}
+      </h1>
+      <p className="mt-3 max-w-[58ch] text-[15px] leading-[1.55] text-bean-soft">
+        {subtitle}
+      </p>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+          {label}
+        </span>
+        {hint && (
+          <span className="font-mono text-[10px] text-slate/80">{hint}</span>
+        )}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-xl border border-border bg-surface-0 px-4 py-3 font-mono text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/40 focus:shadow-[0_0_20px_rgba(239,111,46,0.06)] transition-all"
+      {...props}
+      className={[
+        "w-full bg-paper border border-line-soft px-3.5 py-2.5 font-mono text-[13px] text-bean placeholder:text-slate/60",
+        "outline-none focus:border-bean transition-colors",
+        props.className ?? "",
+      ].join(" ")}
     />
   );
 }
 
-function PrimaryButton({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+function SelectInput({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-paper border border-line-soft px-3.5 py-2.5 font-mono text-[13px] text-bean outline-none focus:border-bean transition-colors"
+    >
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function AmberButton({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+}) {
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
-      className="w-full rounded-xl bg-accent px-6 py-3 font-semibold text-sm text-background hover:brightness-110 transition-all glow-accent btn-press disabled:opacity-40 disabled:pointer-events-none"
+      className="inline-flex items-center gap-2 bg-amber px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-amber-pressed transition-colors btn-press disabled:bg-slate/40 disabled:cursor-not-allowed"
     >
       {children}
     </button>
   );
 }
 
-function SecondaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function GhostButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-xl border border-border bg-surface-1 px-6 py-3 text-sm text-text-secondary hover:text-text-primary hover:border-border-hover transition-all btn-press"
+      className="inline-flex items-center gap-2 border border-line-soft bg-paper px-5 py-2.5 font-sans text-[14px] text-bean hover:border-bean transition-colors btn-press"
     >
       {children}
     </button>
   );
 }
 
-function MockTxHash() {
-  const hash = "0x" + Array.from({ length: 8 }, () => Math.floor(Math.random() * 16).toString(16)).join("") + "..." + Array.from({ length: 4 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-  return <span className="font-mono text-[11px] text-text-tertiary">{hash}</span>;
+function Aside({ children }: { children: React.ReactNode }) {
+  return (
+    <aside className="border border-line-soft bg-cream-soft p-6">
+      {children}
+    </aside>
+  );
 }
 
-// ─── Role Selection ──────────────────────────────────────────────────
-function RoleSelection({ onSelect }: { onSelect: (role: Role) => void }) {
+function StepActions({
+  onBack,
+  onNext,
+  nextLabel,
+  nextDisabled,
+  backDisabled,
+}: {
+  onBack?: () => void;
+  onNext: () => void;
+  nextLabel: string;
+  nextDisabled?: boolean;
+  backDisabled?: boolean;
+}) {
   return (
-    <motion.div {...fadeIn} className="mx-auto max-w-2xl">
-      <div className="text-center mb-12">
-        <span className="text-[12px] font-medium text-accent tracking-widest uppercase">GET STARTED</span>
-        <h1 className="mt-3 text-3xl font-bold text-text-primary sm:text-4xl">Who are you?</h1>
-        <p className="mt-3 text-text-secondary">Choose your role to see how ROVA works for you.</p>
+    <div className="mt-10 flex items-center justify-between border-t border-line-paper pt-6">
+      {onBack ? (
+        <button
+          onClick={onBack}
+          disabled={backDisabled}
+          className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate hover:text-bean transition-colors disabled:opacity-40"
+        >
+          ← Back
+        </button>
+      ) : (
+        <span />
+      )}
+      <AmberButton onClick={onNext} disabled={nextDisabled}>
+        {nextLabel} <ArrowRightIcon size={14} />
+      </AmberButton>
+    </div>
+  );
+}
+
+/* ─── Door selector ────────────────────────────────────────────── */
+
+function DoorSelect({ onPick }: { onPick: (d: Door) => void }) {
+  return (
+    <motion.div {...fade} className="mx-auto max-w-[1080px] px-6 py-16">
+      <div className="mx-auto max-w-[640px] text-center">
+        <Eyebrow tone="amber" className="justify-center">
+          Get started on Rova
+        </Eyebrow>
+        <h1 className="mt-5 font-sans text-[clamp(2.2rem,5vw,3.6rem)] leading-[1.05] tracking-[-0.025em] font-semibold text-bean">
+          Two doors. One marketplace.
+        </h1>
+        <p className="mt-5 mx-auto max-w-[52ch] text-[16px] leading-[1.55] text-bean-soft">
+          Pick the side you&apos;re coming from. We&apos;ll walk you through
+          everything you need to be live on Base — wallet, identity, and the
+          first call you can make.
+        </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <motion.button
-          whileHover={{ y: -4 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onSelect("agent")}
-          className="text-left rounded-2xl border border-accent/20 p-8 card-elevated gradient-border"
-          style={{ background: "linear-gradient(145deg, rgba(239,111,46,0.04), transparent)" }}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 border border-accent/20">
-              <span className="font-mono text-sm font-bold text-accent">A</span>
-            </div>
-            <span className="font-mono text-[10px] text-accent">CLIENT</span>
-          </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">I&apos;m an Agent</h3>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            I need physical work done. Post a task, select a robot, and let escrow handle payment automatically.
-          </p>
-          <div className="mt-5 font-mono text-[10px] text-accent/60">
-            Post Task &rarr; Select Robot &rarr; Auto-settle
-          </div>
-        </motion.button>
+      <div className="mt-14 grid grid-cols-1 gap-px bg-line-soft border border-line-soft md:grid-cols-2">
+        <DoorCard
+          eyebrow="Door A · Fleet operator"
+          icon={<OperatorIcon size={28} />}
+          title="I have robots"
+          tagline="Register a fleet, set a policy, and let them earn USDC off-hours."
+          meta={["4 steps", "~45 min", "Stake 100 ROVA"]}
+          onClick={() => onPick("operator")}
+        />
+        <DoorCard
+          eyebrow="Door B · Agent builder"
+          icon={<AgentIcon size={28} />}
+          title="I want to hire robots"
+          tagline="Spin up an agent identity, cap your spend, and post your first job."
+          meta={["3 steps", "~15 min", "No stake required"]}
+          onClick={() => onPick("agent")}
+        />
+      </div>
 
-        <motion.button
-          whileHover={{ y: -4 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onSelect("operator")}
-          className="text-left rounded-2xl border border-teal/20 p-8 card-elevated"
-          style={{ background: "linear-gradient(145deg, rgba(96,165,250,0.04), transparent)" }}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal/10 border border-teal/20">
-              <span className="font-mono text-sm font-bold text-teal">R</span>
-            </div>
-            <span className="font-mono text-[10px] text-teal">PROVIDER</span>
-          </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">I&apos;m a Fleet Operator</h3>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            I have robots that can do physical work. Register them on ROVA and start earning from agent tasks.
-          </p>
-          <div className="mt-5 font-mono text-[10px] text-teal/60">
-            Register &rarr; Stake &rarr; Earn
-          </div>
-        </motion.button>
+      <div className="mt-10 flex flex-col items-center justify-center gap-2 text-center">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+          Already onboarded?
+        </span>
+        <div className="flex items-center gap-4">
+          <AmberLink href="/dashboard">Go to dashboard</AmberLink>
+          <span className="text-slate">·</span>
+          <AmberLink href="/agent">Open agent view</AmberLink>
+          <span className="text-slate">·</span>
+          <AmberLink href="/robot">Open robot view</AmberLink>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-// ─── Agent Flow ──────────────────────────────────────────────────────
-function AgentFlow({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState<AgentStep>("task");
-  const [task, setTask] = useState<TaskForm>({ taskType: "CARRY", from: "Rack B3", to: "Dispatch Bay 2", bounty: "2.00", sla: "5" });
-  const [selectedRobot, setSelectedRobot] = useState<string | null>(null);
-  const [settling, setSettling] = useState(false);
+function DoorCard({
+  eyebrow,
+  icon,
+  title,
+  tagline,
+  meta,
+  onClick,
+}: {
+  eyebrow: string;
+  icon: React.ReactNode;
+  title: string;
+  tagline: string;
+  meta: string[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative bg-paper p-10 text-left transition-colors hover:bg-cream-soft"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-bean">{icon}</span>
+        <Eyebrow tone="slate">{eyebrow}</Eyebrow>
+      </div>
+      <h2 className="mt-8 font-sans text-[26px] leading-[1.1] tracking-[-0.02em] font-semibold text-bean">
+        {title}
+      </h2>
+      <p className="mt-3 max-w-[42ch] text-[15px] leading-[1.55] text-bean-soft">
+        {tagline}
+      </p>
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        {meta.map((m) => (
+          <span
+            key={m}
+            className="border border-line-soft bg-paper px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate"
+          >
+            {m}
+          </span>
+        ))}
+      </div>
+      <div className="mt-10 inline-flex items-center gap-2 font-sans text-[14px] font-medium text-amber group-hover:text-amber-pressed transition-colors">
+        Start <ArrowRightIcon size={14} />
+      </div>
+    </button>
+  );
+}
 
-  const steps = ["Post Task", "Select Robot", "Lock Escrow", "Tracking", "Settled"];
-  const stepIndex = ["task", "select", "escrow", "tracking", "settled"].indexOf(step);
+/* ─── Operator door ────────────────────────────────────────────── */
 
-  const handleEscrow = () => {
-    setStep("escrow");
-    setTimeout(() => {
-      setStep("tracking");
-      setTimeout(() => {
-        setSettling(true);
-        setTimeout(() => {
-          setStep("settled");
-        }, 2000);
-      }, 3000);
-    }, 2000);
+interface OperatorState {
+  wallet: { address: string; chain: "base-sepolia" | "base"; warehouse: string };
+  robot: { name: string; model: string; stake: string; location: string };
+  policyTemplate: string;
+  taskTypes: TaskType[];
+  floors: Record<string, number>;
+  autoAccept: boolean;
+  offerings: Record<string, boolean>;
+}
+
+function OperatorFlow({ onExit }: { onExit: () => void }) {
+  const [step, setStep] = useState(0);
+  const [state, setState] = useState<OperatorState>({
+    wallet: { address: "", chain: "base-sepolia", warehouse: "" },
+    robot: { name: "", model: ROBOT_MODELS[0], stake: "100", location: "" },
+    policyTemplate: "cautious",
+    taskTypes: ["CARRY", "SORT"],
+    floors: { CARRY: 4.5, SORT: 3.0 },
+    autoAccept: false,
+    offerings: { CARRY: true, SORT: true },
+  });
+
+  const labels = ["Wallet", "Robot", "Policy", "Offerings"];
+  const total = labels.length;
+
+  const setS = <K extends keyof OperatorState>(k: K, v: OperatorState[K]) =>
+    setState((s) => ({ ...s, [k]: v }));
+
+  const next = () => setStep((s) => Math.min(s + 1, total));
+  const back = () => setStep((s) => Math.max(s - 1, 0));
+
+  const canAdvanceStep = (i: number) => {
+    if (i === 0) return state.wallet.address.length >= 8;
+    if (i === 1)
+      return state.robot.name.trim().length > 0 && Number(state.robot.stake) >= 100;
+    if (i === 2) return state.taskTypes.length > 0;
+    if (i === 3) return Object.values(state.offerings).some(Boolean);
+    return true;
   };
 
   return (
-    <motion.div {...fadeIn} className="mx-auto max-w-2xl">
-      <button onClick={onBack} className="flex items-center gap-2 mb-6 font-mono text-[11px] text-text-tertiary hover:text-text-primary transition-colors">
-        &larr; Back to role selection
-      </button>
-
-      <StepIndicator steps={steps} current={stepIndex} />
+    <motion.div {...fade} className="mx-auto max-w-[1080px] px-6 py-12">
+      <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <button
+            onClick={onExit}
+            className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate hover:text-bean transition-colors"
+          >
+            ← Back to door select
+          </button>
+          <div className="mt-3 flex items-center gap-3">
+            <OperatorIcon size={22} />
+            <span className="font-sans text-[18px] font-semibold tracking-[-0.01em] text-bean">
+              Operator onboarding
+            </span>
+          </div>
+        </div>
+        <ProgressDots total={total} current={step} labels={labels} />
+      </div>
 
       <AnimatePresence mode="wait">
-        {step === "task" && (
-          <motion.div key="task" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-accent shadow-[0_0_8px_rgba(239,111,46,0.5)]" />
-              <span className="font-mono text-xs text-accent">POST A TASK</span>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">Define what physical work you need done. Your bounty will be locked in escrow until a robot completes the job.</p>
+        {step === 0 && (
+          <motion.section
+            key="op-wallet"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Operator"
+              index={0}
+              total={total}
+              title="Connect your operator wallet"
+              subtitle="This wallet owns the fleet and signs registration calls. Safe is recommended for fleets larger than five robots."
+            />
 
-            <FormField label="Task Type">
-              <div className="flex gap-2">
-                {TASK_TYPES.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTask({ ...task, taskType: t })}
-                    className={`flex-1 rounded-lg px-3 py-2.5 font-mono text-xs font-semibold border transition-all ${
-                      task.taskType === t
-                        ? "border-accent/30 bg-accent/10 text-accent shadow-[0_0_12px_rgba(239,111,46,0.08)]"
-                        : "border-border bg-surface-0 text-text-tertiary hover:text-text-secondary"
-                    }`}
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-[1.1fr,0.9fr]">
+              <div className="space-y-5">
+                <Field label="Wallet address" hint="0x… or ENS">
+                  <TextInput
+                    value={state.wallet.address}
+                    onChange={(e) =>
+                      setS("wallet", {
+                        ...state.wallet,
+                        address: e.target.value,
+                      })
+                    }
+                    placeholder="0xA3f7…b21d"
+                  />
+                </Field>
+                <Field label="Network">
+                  <div className="flex gap-2">
+                    {[
+                      { id: "base-sepolia", label: "Base Sepolia" },
+                      { id: "base", label: "Base mainnet" },
+                    ].map((n) => {
+                      const active = state.wallet.chain === n.id;
+                      return (
+                        <button
+                          key={n.id}
+                          onClick={() =>
+                            setS("wallet", {
+                              ...state.wallet,
+                              chain: n.id as "base-sepolia" | "base",
+                            })
+                          }
+                          className={[
+                            "flex-1 border px-3.5 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] transition-colors",
+                            active
+                              ? "border-bean bg-bean text-paper"
+                              : "border-line-soft bg-paper text-bean hover:border-bean",
+                          ].join(" ")}
+                        >
+                          {n.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+                <Field label="Warehouse address" hint="Optional · used for default geofence">
+                  <TextInput
+                    value={state.wallet.warehouse}
+                    onChange={(e) =>
+                      setS("wallet", {
+                        ...state.wallet,
+                        warehouse: e.target.value,
+                      })
+                    }
+                    placeholder="2114 Industrial Way, Oakland CA"
+                  />
+                </Field>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <GhostButton
+                    onClick={() =>
+                      setS("wallet", {
+                        ...state.wallet,
+                        address: "0xA3f7" + Math.random().toString(16).slice(2, 6) + "b21d",
+                      })
+                    }
                   >
-                    {t}
-                  </button>
-                ))}
+                    <WalletIcon size={14} /> Connect wallet
+                  </GhostButton>
+                  <span className="font-mono text-[10px] text-slate">
+                    or paste an address manually
+                  </span>
+                </div>
               </div>
-            </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="From (Pickup)">
-                <InputField value={task.from} onChange={(v) => setTask({ ...task, from: v })} placeholder="e.g. Rack B3" />
-              </FormField>
-              <FormField label="To (Delivery)">
-                <InputField value={task.to} onChange={(v) => setTask({ ...task, to: v })} placeholder="e.g. Dispatch Bay 2" />
-              </FormField>
+              <Aside>
+                <SectionLabel>What happens here</SectionLabel>
+                <ul className="mt-4 space-y-3 text-[14px] leading-[1.55] text-bean-soft">
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    Standard wallet picker — MetaMask, Safe, Rainbow, WalletConnect.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    SIWE message is signed and stored as a session cookie.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    Wrong network triggers a programmatic switch on supporting wallets.
+                  </li>
+                </ul>
+                <div className="mt-6 flex items-center gap-2">
+                  <StatusPill tone="warn">Testnet only</StatusPill>
+                  <span className="font-mono text-[10px] text-slate">
+                    Don&apos;t send mainnet funds in v1.
+                  </span>
+                </div>
+              </Aside>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Bounty (USDC)">
-                <InputField value={task.bounty} onChange={(v) => setTask({ ...task, bounty: v })} placeholder="2.00" type="number" />
-              </FormField>
-              <FormField label="SLA (Minutes)">
-                <InputField value={task.sla} onChange={(v) => setTask({ ...task, sla: v })} placeholder="5" type="number" />
-              </FormField>
-            </div>
-
-            <div className="mt-2 rounded-lg border border-border bg-surface-0 p-3 font-mono text-[10px] text-text-tertiary">
-              Schema: ROVA-{task.taskType}-v1 &middot; Network: Base Sepolia &middot; Escrow: ROVAMarket.sol
-            </div>
-
-            <div className="mt-6">
-              <PrimaryButton onClick={() => setStep("select")} disabled={!task.from || !task.to || !task.bounty}>
-                Post Task &rarr;
-              </PrimaryButton>
-            </div>
-          </motion.div>
+            <StepActions
+              onNext={next}
+              nextLabel="Continue"
+              nextDisabled={!canAdvanceStep(0)}
+            />
+          </motion.section>
         )}
 
-        {step === "select" && (
-          <motion.div key="select" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-teal">SELECT A ROBOT</span>
+        {step === 1 && (
+          <motion.section
+            key="op-robot"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Operator"
+              index={1}
+              total={total}
+              title="Register your first robot"
+              subtitle="One robot now — add the rest from the dashboard later. First-success-fast is the goal."
+            />
+
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-[1.1fr,0.9fr]">
+              <div className="space-y-5">
+                <Field label="Robot name" hint="Required">
+                  <TextInput
+                    value={state.robot.name}
+                    onChange={(e) =>
+                      setS("robot", { ...state.robot, name: e.target.value })
+                    }
+                    placeholder="G1-ALPHA"
+                  />
+                </Field>
+                <Field label="Model">
+                  <SelectInput
+                    value={state.robot.model}
+                    onChange={(v) =>
+                      setS("robot", { ...state.robot, model: v })
+                    }
+                    options={ROBOT_MODELS}
+                  />
+                </Field>
+                <Field label="Initial stake (ROVA)" hint="Minimum 100">
+                  <div className="flex items-center gap-3">
+                    <TextInput
+                      type="number"
+                      min={100}
+                      value={state.robot.stake}
+                      onChange={(e) =>
+                        setS("robot", {
+                          ...state.robot,
+                          stake: e.target.value,
+                        })
+                      }
+                    />
+                    <span className="font-mono text-[12px] text-slate whitespace-nowrap">
+                      ≈ <MonoNum value={Math.round(Number(state.robot.stake) * 1.79)} unit="USD" size="sm" />
+                    </span>
+                  </div>
+                </Field>
+                <Field label="Location" hint="Lat/lng or address">
+                  <div className="flex gap-2">
+                    <TextInput
+                      value={state.robot.location}
+                      onChange={(e) =>
+                        setS("robot", {
+                          ...state.robot,
+                          location: e.target.value,
+                        })
+                      }
+                      placeholder="37.8044, -122.2711"
+                    />
+                    <GhostButton
+                      onClick={() =>
+                        setS("robot", {
+                          ...state.robot,
+                          location: "37.8044, -122.2711",
+                        })
+                      }
+                    >
+                      <PinIcon size={14} /> Locate
+                    </GhostButton>
+                  </div>
+                </Field>
+              </div>
+
+              <Aside>
+                <SectionLabel>This creates</SectionLabel>
+                <ul className="mt-4 space-y-3 text-[14px] leading-[1.55] text-bean-soft">
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    An ERC-4337 smart wallet to receive USDC.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    A registry entry in <span className="font-mono text-bean">ROVARegistry</span>.
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1 w-1 bg-bean shrink-0" />
+                    A session key the SDK signs with on the robot&apos;s behalf.
+                  </li>
+                </ul>
+                <div className="mt-6 border-t border-line-soft pt-4">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+                    Stake economics
+                  </span>
+                  <p className="mt-2 text-[13px] leading-[1.55] text-bean-soft">
+                    Slashable on failed delivery. Refundable on deactivation. You can top up
+                    later from the dashboard.
+                  </p>
+                </div>
+              </Aside>
             </div>
-            <p className="text-sm text-text-secondary mb-6">
-              {AVAILABLE_ROBOTS.length} robots available for <span className="text-accent">{task.taskType}</span> tasks. Select one based on price, ETA, and reputation.
-            </p>
+
+            <StepActions
+              onBack={back}
+              onNext={next}
+              nextLabel="Register robot"
+              nextDisabled={!canAdvanceStep(1)}
+            />
+          </motion.section>
+        )}
+
+        {step === 2 && (
+          <motion.section
+            key="op-policy"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Operator"
+              index={2}
+              total={total}
+              title="Author your fleet policy"
+              subtitle="Start from a template. Tune the load-bearing knobs. The full editor lives at /dashboard/policies."
+            />
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {POLICY_TEMPLATES.map((t) => {
+                const active = state.policyTemplate === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setS("policyTemplate", t.id);
+                      setS("autoAccept", t.autoAccept);
+                      setS("floors", { ...state.floors, ...t.floors });
+                    }}
+                    className={[
+                      "text-left border p-5 transition-colors",
+                      active
+                        ? "border-bean bg-cream-soft"
+                        : "border-line-soft bg-paper hover:border-bean",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+                        Template
+                      </span>
+                      {t.recommended && (
+                        <StatusPill tone="ok">Recommended</StatusPill>
+                      )}
+                    </div>
+                    <div className="mt-3 font-sans text-[16px] font-semibold tracking-[-0.01em] text-bean">
+                      {t.title}
+                    </div>
+                    <p className="mt-2 text-[13px] leading-[1.5] text-bean-soft">
+                      {t.summary}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-10">
+              <SectionLabel>Tune the policy</SectionLabel>
+              <div className="mt-5 space-y-6">
+                <Field label="Accept task types">
+                  <div className="flex flex-wrap gap-2">
+                    {TASK_TYPES.map((t) => {
+                      const on = state.taskTypes.includes(t);
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => {
+                            const nextSet = on
+                              ? state.taskTypes.filter((x) => x !== t)
+                              : [...state.taskTypes, t];
+                            setS("taskTypes", nextSet);
+                          }}
+                          className={[
+                            "border px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                            on
+                              ? "border-bean bg-bean text-paper"
+                              : "border-line-soft bg-paper text-bean hover:border-bean",
+                          ].join(" ")}
+                        >
+                          {on ? "✓ " : ""}
+                          {t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+
+                {state.taskTypes.map((t) => (
+                  <Field
+                    key={t}
+                    label={`Price floor (${t})`}
+                    hint={`Market floor: $${(t === "CARRY" ? 4.5 : 3.0).toFixed(2)}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        step={0.25}
+                        value={state.floors[t] ?? 0}
+                        onChange={(e) =>
+                          setS("floors", {
+                            ...state.floors,
+                            [t]: Number(e.target.value),
+                          })
+                        }
+                        className="flex-1 accent-bean"
+                      />
+                      <MonoNum
+                        value={(state.floors[t] ?? 0).toFixed(2)}
+                        unit="USDC"
+                        size="md"
+                      />
+                    </div>
+                    {(state.floors[t] ?? 0) === 0 && (
+                      <p className="mt-1.5 font-mono text-[10px] text-amber">
+                        $0 floor accepts any offer — recommended ≥ $4.50.
+                      </p>
+                    )}
+                  </Field>
+                ))}
+
+                <Field label="Auto-accept offers">
+                  <div className="flex gap-2">
+                    {[
+                      { v: true, label: "On" },
+                      { v: false, label: "Off · review first 1–2 weeks" },
+                    ].map((o) => {
+                      const active = state.autoAccept === o.v;
+                      return (
+                        <button
+                          key={o.label}
+                          onClick={() => setS("autoAccept", o.v)}
+                          className={[
+                            "border px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors",
+                            active
+                              ? "border-bean bg-bean text-paper"
+                              : "border-line-soft bg-paper text-bean hover:border-bean",
+                          ].join(" ")}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </div>
+            </div>
+
+            <StepActions
+              onBack={back}
+              onNext={next}
+              nextLabel="Save policy"
+              nextDisabled={!canAdvanceStep(2)}
+            />
+          </motion.section>
+        )}
+
+        {step === 3 && (
+          <motion.section
+            key="op-offerings"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Operator"
+              index={3}
+              total={total}
+              title="Publish your first offerings"
+              subtitle="Each offering is a (taskType, price, SLA) tuple written on-chain. We publish at your floor — agents bid above."
+            />
 
             <div className="space-y-3">
-              {AVAILABLE_ROBOTS.map((robot) => (
-                <motion.button
-                  key={robot.id}
-                  whileHover={{ x: 4 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => setSelectedRobot(robot.id)}
-                  className={`w-full text-left rounded-xl border p-5 transition-all duration-200 ${
-                    selectedRobot === robot.id
-                      ? "border-accent/30 bg-accent/[0.04] shadow-[0_0_20px_rgba(239,111,46,0.06)]"
-                      : "border-border bg-surface-0 hover:border-border-hover"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${selectedRobot === robot.id ? "bg-accent shadow-[0_0_8px_rgba(239,111,46,0.4)]" : "bg-teal"} animate-pulse`} />
-                      <span className="font-mono text-sm font-bold text-text-primary">{robot.id}</span>
+              {state.taskTypes.map((t) => {
+                const on = state.offerings[t] !== false;
+                return (
+                  <button
+                    key={t}
+                    onClick={() =>
+                      setS("offerings", {
+                        ...state.offerings,
+                        [t]: !on,
+                      })
+                    }
+                    className={[
+                      "w-full text-left border p-5 transition-colors",
+                      on
+                        ? "border-bean bg-cream-soft"
+                        : "border-line-soft bg-paper hover:border-bean",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-4">
+                        <span
+                          className={[
+                            "flex h-5 w-5 items-center justify-center border",
+                            on
+                              ? "border-bean bg-bean text-paper"
+                              : "border-line-soft bg-paper text-slate",
+                          ].join(" ")}
+                          style={{ borderRadius: 2 }}
+                        >
+                          {on && <CheckIcon size={11} />}
+                        </span>
+                        <span className="font-mono text-[12px] uppercase tracking-[0.14em] text-bean">
+                          {t}
+                        </span>
+                        <span className="font-mono text-[12px] text-slate">
+                          {state.robot.name || "G1-ALPHA"} · #1
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-5">
+                        <MonoNum
+                          value={(state.floors[t] ?? 0).toFixed(2)}
+                          unit="USDC"
+                          size="md"
+                        />
+                        <span className="font-mono text-[11px] text-slate">
+                          30 min SLA
+                        </span>
+                      </div>
                     </div>
-                    <span className="font-mono text-lg font-bold text-accent">{robot.price} <span className="text-xs text-text-tertiary">USDC</span></span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-3">
-                    <div>
-                      <div className="text-[10px] font-medium text-text-tertiary uppercase">ETA</div>
-                      <div className="font-mono text-xs text-text-primary">{robot.eta}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-text-tertiary uppercase">Rep</div>
-                      <div className="font-mono text-xs text-accent">{robot.rep}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-text-tertiary uppercase">Stake</div>
-                      <div className="font-mono text-xs text-text-primary">{robot.stake} ROVA</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-medium text-text-tertiary uppercase">Jobs</div>
-                      <div className="font-mono text-xs text-text-primary">{robot.jobs}</div>
-                    </div>
-                  </div>
-                </motion.button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="mt-6">
-              <PrimaryButton onClick={handleEscrow} disabled={!selectedRobot}>
-                Hire {selectedRobot ?? "..."} &rarr; Lock Escrow
-              </PrimaryButton>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line-paper pt-5">
+              <div className="flex items-center gap-3">
+                <LockIcon size={14} />
+                <span className="font-mono text-[11px] text-slate">
+                  Two transactions · gas estimate ~$0.04
+                </span>
+              </div>
+              <span className="font-mono text-[11px] text-slate">
+                Once published, offers appear in your dashboard offer-stream.
+              </span>
             </div>
-          </motion.div>
-        )}
 
-        {step === "escrow" && (
-          <motion.div key="escrow" {...fadeIn} className="rounded-2xl border border-amber/20 p-8 card-elevated text-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="mx-auto mb-6 h-12 w-12 rounded-full border-2 border-amber/30 border-t-yellow-400"
+            <StepActions
+              onBack={back}
+              onNext={next}
+              nextLabel="Publish offerings"
+              nextDisabled={!canAdvanceStep(3)}
             />
-            <span className="font-mono text-xs text-amber">LOCKING ESCROW</span>
-            <h3 className="mt-2 text-lg font-semibold text-text-primary">Securing {AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC</h3>
-            <p className="mt-2 text-sm text-text-secondary">Bounty is being locked in ROVAMarket.sol escrow contract on Base Sepolia...</p>
-            <div className="mt-4"><MockTxHash /></div>
-          </motion.div>
+          </motion.section>
         )}
 
-        {step === "tracking" && (
-          <motion.div key="tracking" {...fadeIn} className="rounded-2xl border border-teal/20 p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-teal animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-teal">ROBOT EXECUTING</span>
+        {step === total && (
+          <motion.section
+            key="op-done"
+            {...fade}
+            className="border border-line-paper bg-paper p-10 md:p-14 text-center"
+          >
+            <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center border border-bean text-bean" style={{ borderRadius: 999 }}>
+              <CheckIcon size={20} />
+            </div>
+            <Eyebrow tone="amber" className="justify-center">
+              Operator onboarded
+            </Eyebrow>
+            <h2 className="mt-4 font-sans text-[28px] leading-[1.1] tracking-[-0.02em] font-semibold text-bean">
+              {state.robot.name || "G1-ALPHA"} is live on Rova
+            </h2>
+            <p className="mt-4 mx-auto max-w-[52ch] text-[15px] leading-[1.55] text-bean-soft">
+              First offers will land in the top bar of your dashboard. Approve a few
+              manually before you flip auto-accept.
+            </p>
+
+            <div className="mt-10 mx-auto max-w-[560px] border border-line-soft bg-cream-soft px-6 py-5 text-left">
+              <SectionLabel>Final state</SectionLabel>
+              <ul className="mt-4 space-y-2 font-mono text-[12px] text-bean-soft">
+                <li className="flex justify-between"><span className="text-slate">Robot</span><span>{state.robot.name || "G1-ALPHA"} · {state.robot.model}</span></li>
+                <li className="flex justify-between"><span className="text-slate">Stake</span><MonoNum value={state.robot.stake} unit="ROVA" size="sm" /></li>
+                <li className="flex justify-between"><span className="text-slate">Policy</span><span>{POLICY_TEMPLATES.find((p) => p.id === state.policyTemplate)?.title}</span></li>
+                <li className="flex justify-between"><span className="text-slate">Offerings</span><span>{state.taskTypes.filter((t) => state.offerings[t] !== false).join(", ")}</span></li>
+                <li className="flex justify-between"><span className="text-slate">Auto-accept</span><span>{state.autoAccept ? "On" : "Off"}</span></li>
+              </ul>
             </div>
 
-            <div className="space-y-3 font-mono text-xs">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-accent">[ESCROW]</span>
-                <span className="text-text-secondary">{AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC locked &middot; <MockTxHash /></span>
-              </motion.div>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-teal">[{selectedRobot}]</span>
-                <span className="text-text-secondary">Job accepted &middot; navigating to {task.from}...</span>
-              </motion.div>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-teal">[{selectedRobot}]</span>
-                <span className="text-text-secondary">Arrived at {task.from} &middot; picking up payload...</span>
-              </motion.div>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.5 }} className="flex items-center gap-3 rounded-lg bg-surface-0 p-3">
-                <span className="text-teal">[{selectedRobot}]</span>
-                <span className="text-text-secondary">Navigating to {task.to} &middot; payload secured...</span>
-              </motion.div>
-              {settling && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 rounded-lg bg-accent/[0.04] border border-accent/10 p-3">
-                  <span className="text-slate">[VERIFIER]</span>
-                  <span className="text-text-secondary">GPS confirmed &middot; SLA met &middot; submitting proof...</span>
-                </motion.div>
-              )}
-            </div>
-
-            {/* Progress bar */}
-            <div className="mt-6 h-1 rounded-full bg-surface-2 overflow-hidden">
-              <motion.div
-                className="h-full bg-gradient-to-r from-blue-400 to-accent rounded-full"
-                initial={{ width: "10%" }}
-                animate={{ width: settling ? "100%" : "70%" }}
-                transition={{ duration: settling ? 1 : 3, ease: "easeInOut" }}
-              />
-            </div>
-          </motion.div>
-        )}
-
-        {step === "settled" && (
-          <motion.div key="settled" {...fadeIn} className="rounded-2xl border border-accent/20 p-8 card-elevated text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", damping: 12 }}
-              className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 border border-accent/30 shadow-[0_0_30px_rgba(239,111,46,0.15)]"
-            >
-              <span className="text-2xl text-accent">{"\u2713"}</span>
-            </motion.div>
-            <span className="font-mono text-xs text-accent">JOB SETTLED</span>
-            <h3 className="mt-2 text-xl font-bold text-text-primary">Task Complete</h3>
-
-            <div className="mt-6 rounded-xl border border-border bg-surface-0 p-5 text-left space-y-2">
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Task</span><span className="font-mono text-xs text-text-primary">{task.taskType}: {task.from} &rarr; {task.to}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-teal">{selectedRobot}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Paid to robot</span><span className="font-mono text-xs text-accent">{AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price} USDC</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Refunded</span><span className="font-mono text-xs text-text-primary">{(parseFloat(task.bounty) - (AVAILABLE_ROBOTS.find(r => r.id === selectedRobot)?.price ?? 0)).toFixed(2)} USDC</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Time</span><span className="font-mono text-xs text-text-primary">2m 48s / {task.sla}m</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Tx</span><MockTxHash /></div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <SecondaryButton onClick={() => { setStep("task"); setSelectedRobot(null); }}>
-                Post Another Task
-              </SecondaryButton>
-              <Link href="/dashboard" className="rounded-xl border border-border bg-surface-1 px-6 py-3 text-sm text-text-secondary hover:text-text-primary text-center transition-all btn-press">
-                View Dashboard
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/dashboard" className="inline-flex items-center gap-2 bg-amber px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-amber-pressed transition-colors btn-press">
+                Open dashboard <ArrowRightIcon size={14} />
               </Link>
+              <GhostButton onClick={() => setStep(0)}>Register another robot</GhostButton>
             </div>
-          </motion.div>
+          </motion.section>
         )}
       </AnimatePresence>
     </motion.div>
   );
 }
 
-// ─── Operator Flow ───────────────────────────────────────────────────
-function OperatorFlow({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState<OperatorStep>("register");
-  const [robot, setRobot] = useState<RobotForm>({ name: "G1-OMEGA", model: "Unitree G1", wallet: "" });
-  const [capabilities, setCapabilities] = useState<string[]>(["CARRY"]);
-  const [stakeAmount, setStakeAmount] = useState("500");
-  const [offerings, setOfferings] = useState<{ type: string; price: string; sla: string }[]>([]);
-  const [staking, setStaking] = useState(false);
+/* ─── Agent door ───────────────────────────────────────────────── */
 
-  const steps = ["Register", "Capabilities", "Stake", "Offerings", "Live"];
-  const stepIndex = ["register", "capabilities", "stake", "offerings", "live"].indexOf(step);
+interface AgentState {
+  agentName: string;
+  wallet: string;
+  dailyCap: string;
+  perJobCap: string;
+  copied: boolean;
+}
 
-  const toggleCap = (cap: string) => {
-    setCapabilities((prev) =>
-      prev.includes(cap) ? prev.filter((c) => c !== cap) : [...prev, cap]
-    );
+const SDK_SNIPPET = `import { Rova } from "@rovaprotocol/sdk";
+
+const rova = new Rova({
+  agent: process.env.ROVA_AGENT_ID,
+  signer: process.env.ROVA_AGENT_SIGNER,
+  chain: "base-sepolia",
+});
+
+const job = await rova.jobs.post({
+  taskType: "CARRY",
+  bounty: "2.00",   // USDC
+  sla: 5,           // minutes
+  pickup: "rack-b3",
+  drop:   "dispatch-bay-2",
+});
+
+await job.waitForSettlement();`;
+
+function AgentFlow({ onExit }: { onExit: () => void }) {
+  const [step, setStep] = useState(0);
+  const [state, setState] = useState<AgentState>({
+    agentName: "",
+    wallet: "",
+    dailyCap: "250",
+    perJobCap: "25",
+    copied: false,
+  });
+
+  const labels = ["Identity", "Spend caps", "Integrate"];
+  const total = labels.length;
+
+  const setS = <K extends keyof AgentState>(k: K, v: AgentState[K]) =>
+    setState((s) => ({ ...s, [k]: v }));
+
+  const next = () => setStep((s) => Math.min(s + 1, total));
+  const back = () => setStep((s) => Math.max(s - 1, 0));
+
+  const canAdvance = (i: number) => {
+    if (i === 0)
+      return state.agentName.trim().length > 0 && state.wallet.length >= 8;
+    if (i === 1)
+      return Number(state.dailyCap) > 0 && Number(state.perJobCap) > 0;
+    return true;
   };
 
-  const handleStake = () => {
-    setStaking(true);
-    setTimeout(() => {
-      setStaking(false);
-      setStep("offerings");
-    }, 2500);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(SDK_SNIPPET);
+      setS("copied", true);
+      setTimeout(() => setS("copied", false), 1800);
+    } catch {
+      /* noop */
+    }
   };
 
   return (
-    <motion.div {...fadeIn} className="mx-auto max-w-2xl">
-      <button onClick={onBack} className="flex items-center gap-2 mb-6 font-mono text-[11px] text-text-tertiary hover:text-text-primary transition-colors">
-        &larr; Back to role selection
-      </button>
-
-      <StepIndicator steps={steps} current={stepIndex} />
+    <motion.div {...fade} className="mx-auto max-w-[1080px] px-6 py-12">
+      <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <button
+            onClick={onExit}
+            className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate hover:text-bean transition-colors"
+          >
+            ← Back to door select
+          </button>
+          <div className="mt-3 flex items-center gap-3">
+            <AgentIcon size={22} />
+            <span className="font-sans text-[18px] font-semibold tracking-[-0.01em] text-bean">
+              Agent builder onboarding
+            </span>
+          </div>
+        </div>
+        <ProgressDots total={total} current={step} labels={labels} />
+      </div>
 
       <AnimatePresence mode="wait">
-        {step === "register" && (
-          <motion.div key="register" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-teal">REGISTER ROBOT</span>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">Register your robot on the ROVA registry. It will be assigned an onchain identity and can start receiving jobs.</p>
+        {step === 0 && (
+          <motion.section
+            key="ag-identity"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Agent"
+              index={0}
+              total={total}
+              title="Connect wallet and name your agent"
+              subtitle="Your wallet pays for jobs. The agent name appears in robot pickers and on-chain logs."
+            />
 
-            <FormField label="Robot Name">
-              <InputField value={robot.name} onChange={(v) => setRobot({ ...robot, name: v })} placeholder="e.g. G1-OMEGA" />
-            </FormField>
-            <FormField label="Robot Model">
-              <InputField value={robot.model} onChange={(v) => setRobot({ ...robot, model: v })} placeholder="e.g. Unitree G1" />
-            </FormField>
-            <FormField label="Payment Wallet (ERC-4337)">
-              <InputField value={robot.wallet} onChange={(v) => setRobot({ ...robot, wallet: v })} placeholder="0x... or leave blank for auto-deploy" />
-            </FormField>
-
-            <div className="mt-2 rounded-lg border border-border bg-surface-0 p-3 font-mono text-[10px] text-text-tertiary">
-              Contract: ROVARegistry.sol &middot; Function: registerRobot() &middot; Network: Base Sepolia
-            </div>
-
-            <div className="mt-6">
-              <PrimaryButton onClick={() => setStep("capabilities")} disabled={!robot.name}>
-                Register {robot.name} &rarr;
-              </PrimaryButton>
-            </div>
-          </motion.div>
-        )}
-
-        {step === "capabilities" && (
-          <motion.div key="capabilities" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-teal shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-              <span className="font-mono text-xs text-teal">SET CAPABILITIES</span>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">What can <span className="text-teal">{robot.name}</span> do? Select all task types your robot can perform.</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              {TASK_TYPES.map((type) => {
-                const active = capabilities.includes(type);
-                const descriptions: Record<string, string> = {
-                  CARRY: "Pick up and deliver items between locations",
-                  NAVIGATE: "Travel to waypoints for scouting or presence",
-                  INSPECT: "Scan and report on inventory or conditions",
-                  SORT: "Organize items into designated storage areas",
-                };
-                return (
-                  <motion.button
-                    key={type}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => toggleCap(type)}
-                    className={`text-left rounded-xl border p-4 transition-all duration-200 ${
-                      active
-                        ? "border-accent/30 bg-accent/[0.04] shadow-[0_0_15px_rgba(239,111,46,0.06)]"
-                        : "border-border bg-surface-0 hover:border-border-hover"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`font-mono text-xs font-bold ${active ? "text-accent" : "text-text-tertiary"}`}>{type}</span>
-                      <div className={`h-4 w-4 rounded-full border flex items-center justify-center transition-all ${
-                        active ? "border-accent bg-accent" : "border-border"
-                      }`}>
-                        {active && <span className="text-[8px] text-background font-bold">{"\u2713"}</span>}
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-text-tertiary leading-relaxed">{descriptions[type]}</p>
-                  </motion.button>
-                );
-              })}
-            </div>
-
-            <div className="mt-6">
-              <PrimaryButton onClick={() => setStep("stake")} disabled={capabilities.length === 0}>
-                Set {capabilities.length} Capabilities &rarr;
-              </PrimaryButton>
-            </div>
-          </motion.div>
-        )}
-
-        {step === "stake" && (
-          <motion.div key="stake" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-accent shadow-[0_0_8px_rgba(239,111,46,0.5)]" />
-              <span className="font-mono text-xs text-accent">STAKE ROVA</span>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">
-              Stake ROVA tokens to activate <span className="text-teal">{robot.name}</span> on the registry. Higher stake = higher trust score = more jobs won.
-            </p>
-
-            <FormField label="Stake Amount (ROVA)">
-              <InputField value={stakeAmount} onChange={setStakeAmount} placeholder="500" type="number" />
-            </FormField>
-
-            <div className="rounded-xl border border-border bg-surface-0 p-4 space-y-2 mb-6">
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Min Stake</span><span className="font-mono text-xs text-text-primary">100 ROVA</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Your Stake</span><span className="font-mono text-xs text-accent">{stakeAmount} ROVA</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Trust Score</span><span className="font-mono text-xs text-accent">{parseInt(stakeAmount) >= 500 ? "High" : parseInt(stakeAmount) >= 250 ? "Medium" : "Low"}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Slash Risk</span><span className="font-mono text-xs text-amber">10% of bid on failure</span></div>
-            </div>
-
-            {staking ? (
-              <div className="flex items-center justify-center gap-3 py-3">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                  className="h-5 w-5 rounded-full border-2 border-accent/30 border-t-accent"
-                />
-                <span className="font-mono text-xs text-text-secondary">Staking {stakeAmount} ROVA...</span>
-              </div>
-            ) : (
-              <PrimaryButton onClick={handleStake} disabled={parseInt(stakeAmount) < 100}>
-                Stake {stakeAmount} ROVA &rarr;
-              </PrimaryButton>
-            )}
-          </motion.div>
-        )}
-
-        {step === "offerings" && (
-          <motion.div key="offerings" {...fadeIn} className="rounded-2xl border border-border p-8 card-elevated">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="h-2 w-2 rounded-full bg-accent shadow-[0_0_8px_rgba(239,111,46,0.5)]" />
-              <span className="font-mono text-xs text-accent">PUBLISH JOB OFFERINGS</span>
-            </div>
-            <p className="text-sm text-text-secondary mb-6">
-              Set your prices and SLAs for each capability. Agents will see these when browsing the registry.
-            </p>
-
-            <div className="space-y-3 mb-6">
-              {capabilities.map((cap) => {
-                const existing = offerings.find((o) => o.type === cap);
-                return (
-                  <div key={cap} className="rounded-xl border border-border bg-surface-0 p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-mono text-xs font-bold text-accent">{cap}</span>
-                      {existing && <span className="font-mono text-[9px] text-accent bg-accent/10 px-2 py-0.5 rounded-full">CONFIGURED</span>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-medium text-text-tertiary uppercase mb-1">Price (USDC)</label>
-                        <input
-                          type="number"
-                          step="0.25"
-                          defaultValue={existing?.price ?? "1.75"}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setOfferings((prev) => {
-                              const filtered = prev.filter((o) => o.type !== cap);
-                              return [...filtered, { type: cap, price: val, sla: existing?.sla ?? "5" }];
-                            });
-                          }}
-                          className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-accent/30 transition-colors"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-medium text-text-tertiary uppercase mb-1">SLA (Minutes)</label>
-                        <input
-                          type="number"
-                          defaultValue={existing?.sla ?? "5"}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setOfferings((prev) => {
-                              const filtered = prev.filter((o) => o.type !== cap);
-                              return [...filtered, { type: cap, price: existing?.price ?? "1.75", sla: val }];
-                            });
-                          }}
-                          className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-accent/30 transition-colors"
-                        />
-                      </div>
-                    </div>
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-[1.1fr,0.9fr]">
+              <div className="space-y-5">
+                <Field label="Agent handle" hint="lowercase, no spaces">
+                  <TextInput
+                    value={state.agentName}
+                    onChange={(e) =>
+                      setS("agentName", e.target.value.toLowerCase().replace(/\s+/g, "-"))
+                    }
+                    placeholder="restock-bot"
+                  />
+                </Field>
+                <Field label="Funding wallet">
+                  <div className="flex gap-2">
+                    <TextInput
+                      value={state.wallet}
+                      onChange={(e) => setS("wallet", e.target.value)}
+                      placeholder="0x… or ENS"
+                    />
+                    <GhostButton
+                      onClick={() =>
+                        setS(
+                          "wallet",
+                          "0xB7c2" + Math.random().toString(16).slice(2, 6) + "ef8a",
+                        )
+                      }
+                    >
+                      <WalletIcon size={14} /> Connect
+                    </GhostButton>
                   </div>
-                );
-              })}
+                </Field>
+              </div>
+
+              <Aside>
+                <SectionLabel>What an agent is</SectionLabel>
+                <p className="mt-4 text-[14px] leading-[1.55] text-bean-soft">
+                  An on-chain identity that posts jobs and funds escrow. Most
+                  agents are Virtuals — but anything that can sign EIP-712 works:
+                  a Python script, a Zapier hook, your own backend.
+                </p>
+                <div className="mt-6 border-t border-line-soft pt-4">
+                  <SectionLabel>You&apos;ll get</SectionLabel>
+                  <ul className="mt-3 space-y-2 text-[13px] text-bean-soft">
+                    <li className="flex items-center gap-2">
+                      <Dot tone="ok" /> An ACP-compatible agent ID
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Dot tone="ok" /> A session signer for the SDK
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Dot tone="ok" /> Hard-coded spend ceilings
+                    </li>
+                  </ul>
+                </div>
+              </Aside>
             </div>
 
-            <PrimaryButton onClick={() => setStep("live")}>
-              Publish {capabilities.length} Offerings &rarr; Go Live
-            </PrimaryButton>
-          </motion.div>
+            <StepActions
+              onNext={next}
+              nextLabel="Continue"
+              nextDisabled={!canAdvance(0)}
+            />
+          </motion.section>
         )}
 
-        {step === "live" && (
-          <motion.div key="live" {...fadeIn} className="rounded-2xl border border-accent/20 p-8 card-elevated text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", damping: 12 }}
-              className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 border border-accent/30 shadow-[0_0_30px_rgba(239,111,46,0.15)]"
-            >
-              <span className="text-2xl text-accent">{"\u2713"}</span>
-            </motion.div>
-            <span className="font-mono text-xs text-accent">ROBOT LIVE</span>
-            <h3 className="mt-2 text-xl font-bold text-text-primary">{robot.name} is Online</h3>
-            <p className="mt-2 text-sm text-text-secondary">Your robot is registered, staked, and accepting jobs on the ROVA marketplace.</p>
+        {step === 1 && (
+          <motion.section
+            key="ag-caps"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Agent"
+              index={1}
+              total={total}
+              title="Set spend caps"
+              subtitle="Hard ceilings the SDK enforces before signing escrow. Edit these any time from /agent."
+            />
 
-            <div className="mt-6 rounded-xl border border-border bg-surface-0 p-5 text-left space-y-2">
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Robot</span><span className="font-mono text-xs text-teal">{robot.name}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Model</span><span className="font-mono text-xs text-text-primary">{robot.model}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Stake</span><span className="font-mono text-xs text-accent">{stakeAmount} ROVA</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Capabilities</span><span className="font-mono text-xs text-text-primary">{capabilities.join(", ")}</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Offerings</span><span className="font-mono text-xs text-accent">{capabilities.length} published</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Status</span><span className="font-mono text-xs text-accent flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />ACCEPTING JOBS</span></div>
-              <div className="flex justify-between"><span className="font-mono text-[10px] text-text-tertiary">Registry Tx</span><MockTxHash /></div>
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-[1.1fr,0.9fr]">
+              <div className="space-y-5">
+                <Field label="Daily cap" hint="USDC per 24h">
+                  <div className="flex items-center gap-3">
+                    <TextInput
+                      type="number"
+                      min={1}
+                      value={state.dailyCap}
+                      onChange={(e) => setS("dailyCap", e.target.value)}
+                    />
+                    <MonoNum value={state.dailyCap} unit="USDC" size="md" />
+                  </div>
+                </Field>
+                <Field label="Per-job cap" hint="USDC per single bounty">
+                  <div className="flex items-center gap-3">
+                    <TextInput
+                      type="number"
+                      min={1}
+                      value={state.perJobCap}
+                      onChange={(e) => setS("perJobCap", e.target.value)}
+                    />
+                    <MonoNum value={state.perJobCap} unit="USDC" size="md" />
+                  </div>
+                </Field>
+
+                <div className="border border-line-soft bg-cream-soft px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <LockIcon size={14} />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+                      Failsafe
+                    </span>
+                  </div>
+                  <p className="mt-2 font-mono text-[12px] leading-[1.55] text-bean-soft">
+                    Caps trip <span className="text-bean">before</span> the
+                    transaction is signed. A runaway agent costs you nothing
+                    beyond today&apos;s ceiling.
+                  </p>
+                </div>
+              </div>
+
+              <Aside>
+                <SectionLabel>Recommended starting points</SectionLabel>
+                <div className="mt-4 space-y-3">
+                  {[
+                    { kind: "Hobby script", daily: 50, job: 5 },
+                    { kind: "Internal tool", daily: 250, job: 25 },
+                    { kind: "Production agent", daily: 2000, job: 100 },
+                  ].map((r) => (
+                    <button
+                      key={r.kind}
+                      onClick={() => {
+                        setS("dailyCap", String(r.daily));
+                        setS("perJobCap", String(r.job));
+                      }}
+                      className="w-full flex items-center justify-between border border-line-soft bg-paper px-4 py-3 text-left hover:border-bean transition-colors"
+                    >
+                      <span className="font-sans text-[13px] text-bean">
+                        {r.kind}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate">
+                        <MonoNum value={r.daily} unit="/d" size="sm" /> ·{" "}
+                        <MonoNum value={r.job} unit="/job" size="sm" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </Aside>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <SecondaryButton onClick={() => { setStep("register"); setCapabilities(["CARRY"]); setOfferings([]); }}>
-                Register Another
-              </SecondaryButton>
-              <Link href="/dashboard" className="rounded-xl border border-border bg-surface-1 px-6 py-3 text-sm text-text-secondary hover:text-text-primary text-center transition-all btn-press">
-                Fleet Dashboard
+            <StepActions
+              onBack={back}
+              onNext={next}
+              nextLabel="Save caps"
+              nextDisabled={!canAdvance(1)}
+            />
+          </motion.section>
+        )}
+
+        {step === 2 && (
+          <motion.section
+            key="ag-sdk"
+            {...fade}
+            className="border border-line-paper bg-paper p-8 md:p-10"
+          >
+            <StepHeader
+              doorLabel="Agent"
+              index={2}
+              total={total}
+              title="Make your first call"
+              subtitle="Install the SDK and post a job — or skip the code and post manually from /agent."
+            />
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.4fr,0.9fr]">
+              <div>
+                <div className="flex items-center justify-between border border-line-soft bg-cream-soft px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <Eyebrow tone="slate">SDK · TypeScript</Eyebrow>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-slate">
+                      pnpm add @rovaprotocol/sdk
+                    </span>
+                  </div>
+                </div>
+                <pre className="border border-line-soft border-t-0 bg-paper p-5 overflow-x-auto font-mono text-[12px] leading-[1.6] text-bean">
+                  <code>{SDK_SNIPPET}</code>
+                </pre>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-slate">
+                    Copy and paste into your editor.{" "}
+                    <Kbd>⌘</Kbd> <Kbd>C</Kbd> works too.
+                  </span>
+                  <GhostButton onClick={copy}>
+                    {state.copied ? (
+                      <>
+                        <CheckIcon size={14} /> Copied
+                      </>
+                    ) : (
+                      <>Copy snippet</>
+                    )}
+                  </GhostButton>
+                </div>
+              </div>
+
+              <Aside>
+                <SectionLabel>Prefer no code?</SectionLabel>
+                <p className="mt-4 text-[14px] leading-[1.55] text-bean-soft">
+                  The agent surface at <span className="font-mono text-bean">/agent</span> has
+                  a job poster with the same payload shape. Useful for one-off
+                  jobs and for testing a robot before you wire the SDK in.
+                </p>
+                <div className="mt-5">
+                  <AmberLink href="/agent">
+                    Open the agent dashboard <ArrowRightIcon size={12} />
+                  </AmberLink>
+                </div>
+                <div className="mt-6 border-t border-line-soft pt-4">
+                  <SectionLabel>Identity</SectionLabel>
+                  <ul className="mt-3 space-y-2 font-mono text-[11px] text-bean-soft">
+                    <li className="flex justify-between"><span className="text-slate">handle</span><span>@{state.agentName || "your-agent"}</span></li>
+                    <li className="flex justify-between"><span className="text-slate">daily cap</span><span>{state.dailyCap} USDC</span></li>
+                    <li className="flex justify-between"><span className="text-slate">per-job cap</span><span>{state.perJobCap} USDC</span></li>
+                  </ul>
+                </div>
+              </Aside>
+            </div>
+
+            <StepActions
+              onBack={back}
+              onNext={next}
+              nextLabel="Finish setup"
+            />
+          </motion.section>
+        )}
+
+        {step === total && (
+          <motion.section
+            key="ag-done"
+            {...fade}
+            className="border border-line-paper bg-paper p-10 md:p-14 text-center"
+          >
+            <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center border border-bean text-bean" style={{ borderRadius: 999 }}>
+              <CheckIcon size={20} />
+            </div>
+            <Eyebrow tone="amber" className="justify-center">
+              Agent onboarded
+            </Eyebrow>
+            <h2 className="mt-4 font-sans text-[28px] leading-[1.1] tracking-[-0.02em] font-semibold text-bean">
+              @{state.agentName || "your-agent"} is ready to post jobs
+            </h2>
+            <p className="mt-4 mx-auto max-w-[52ch] text-[15px] leading-[1.55] text-bean-soft">
+              Post your first job from the SDK, or use the manual poster at
+              <span className="font-mono text-bean"> /agent</span>. You can adjust
+              spend caps any time.
+            </p>
+
+            <div className="mt-10 mx-auto max-w-[520px] border border-line-soft bg-cream-soft px-6 py-5 text-left">
+              <SectionLabel>Final state</SectionLabel>
+              <ul className="mt-4 space-y-2 font-mono text-[12px] text-bean-soft">
+                <li className="flex justify-between"><span className="text-slate">Agent</span><span>@{state.agentName}</span></li>
+                <li className="flex justify-between"><span className="text-slate">Wallet</span><span>{state.wallet}</span></li>
+                <li className="flex justify-between"><span className="text-slate">Daily cap</span><MonoNum value={state.dailyCap} unit="USDC" size="sm" /></li>
+                <li className="flex justify-between"><span className="text-slate">Per-job cap</span><MonoNum value={state.perJobCap} unit="USDC" size="sm" /></li>
+              </ul>
+            </div>
+
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/agent" className="inline-flex items-center gap-2 bg-amber px-5 py-2.5 font-sans text-[14px] font-medium text-paper hover:bg-amber-pressed transition-colors btn-press">
+                Post your first job <ArrowRightIcon size={14} />
+              </Link>
+              <Link href="/dashboard" className="inline-flex items-center gap-2 border border-line-soft bg-paper px-5 py-2.5 font-sans text-[14px] text-bean hover:border-bean transition-colors btn-press">
+                Go to dashboard
               </Link>
             </div>
-          </motion.div>
+
+            <div className="mt-8 flex items-center justify-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate">
+              <CommandIcon size={12} /> <span>Press ⌘K from anywhere</span>
+            </div>
+          </motion.section>
         )}
       </AnimatePresence>
     </motion.div>
   );
 }
 
-// ─── Main Page ───────────────────────────────────────────────────────
+/* ─── Page ─────────────────────────────────────────────────────── */
+
 export default function OnboardPage() {
-  const [role, setRole] = useState<Role>(null);
+  const [door, setDoor] = useState<Door>(null);
 
   return (
-    <div className="min-h-screen bg-background noise-overlay">
-      <TopBar />
-      <div className="py-12 px-6">
-        <AnimatePresence mode="wait">
-          {role === null && <RoleSelection key="select" onSelect={setRole} />}
-          {role === "agent" && <AgentFlow key="agent" onBack={() => setRole(null)} />}
-          {role === "operator" && <OperatorFlow key="operator" onBack={() => setRole(null)} />}
-        </AnimatePresence>
-      </div>
+    <div className="min-h-screen bg-paper text-bean">
+      <TopBar door={door} onBackToDoors={() => setDoor(null)} />
+      <AnimatePresence mode="wait">
+        {door === null && <DoorSelect key="doors" onPick={setDoor} />}
+        {door === "operator" && (
+          <OperatorFlow key="operator" onExit={() => setDoor(null)} />
+        )}
+        {door === "agent" && (
+          <AgentFlow key="agent" onExit={() => setDoor(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
